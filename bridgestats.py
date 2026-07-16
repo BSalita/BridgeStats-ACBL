@@ -18,21 +18,20 @@ import time
 import bridgestatslib
 import sys
 import os
-import streamlitlib  # assumed import
 
 # todo: doesn't some variation of import chatlib.chatlib work instead of using sys.path.append such as exporting via __init__.py?
 #import acbllib.acbllib
 #import streamlitlib.streamlitlib
 #import chatlib.chatlib
 #import mlBridgeLib.mlBridgeLib
-sys.path.append(str(pathlib.Path.cwd().joinpath('acbllib')))  # global
-#sys.path.append(str(pathlib.Path.cwd().joinpath('chatlib')))  # global
-sys.path.append(str(pathlib.Path.cwd().joinpath('mlBridgeLib')))  # global
-sys.path.append(str(pathlib.Path.cwd().joinpath('streamlitlib')))  # global
-# streamlitlib, mlBridgeLib, chatlib must be placed after sys.path.append. vscode re-format likes to move them to the top
+_APP_DIR = pathlib.Path(__file__).resolve().parent
+for _p in (_APP_DIR, _APP_DIR / 'acbllib', _APP_DIR / 'mlBridge', _APP_DIR / 'streamlitlib'):
+    if _p.is_dir() and str(_p) not in sys.path:
+        sys.path.append(str(_p))
+# streamlitlib, mlBridge, chatlib must be placed after sys.path.append. vscode re-format likes to move them to the top
 import acbllib
 #import chatlib  # must be placed after sys.path.append. vscode re-format likes to move this to the top
-import mlBridgeLib # must be placed after sys.path.append. vscode re-format likes to move this to the top
+import mlBridge.mlBridgeLib as mlBridgeLib  # must be placed after sys.path.append. vscode re-format likes to move this to the top
 import streamlitlib # must be placed after sys.path.append. vscode re-format likes to move this to the top
 
 

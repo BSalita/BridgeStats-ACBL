@@ -1,4 +1,4 @@
-# todo:
+﻿# todo:
 # 1. put club lookup into bridgestats.py (and elsewhere?) to validate club entries.
 
 import streamlit as st
@@ -9,7 +9,15 @@ import altair as alt
 import time
 import bridgestatslib
 import sys
-sys.path.append(str(pathlib.Path.cwd().joinpath('streamlitlib')))  # global
+_APP_DIR = pathlib.Path(__file__).resolve().parent.parent
+_SRC_DIR = _APP_DIR.parent
+_streamlit = next((p for p in (_APP_DIR / 'streamlitlib', _SRC_DIR / 'streamlitlib') if p.is_dir()), None)
+if _streamlit is None:
+    raise FileNotFoundError(f"streamlitlib not found under {_APP_DIR} or {_SRC_DIR}")
+for _p in (_SRC_DIR, _streamlit):
+    _s = str(_p)
+    if _s not in sys.path:
+        sys.path.append(_s)
 import streamlitlib # must be placed after sys.path.append. vscode re-format likes to move this to the top
 import polars as pl
 

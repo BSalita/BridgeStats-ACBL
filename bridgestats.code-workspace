@@ -1,0 +1,39 @@
+﻿{
+    "folders":  [
+                    {
+                        "path":  "."
+                    }
+                ],
+    "settings":  {
+                     "python.defaultInterpreterPath":  "${workspaceFolder}/.venv/Scripts/python.exe",
+                     "python.terminal.activateEnvironment":  true,
+                     "python.terminal.activateEnvInCurrentTerminal":  true,
+                     "terminal.integrated.defaultProfile.windows":  "PowerShell",
+                     "terminal.integrated.profiles.windows":  {
+                                                                  "PowerShell":  {
+                                                                                     "args":  [
+                                                                                                  "-ExecutionPolicy",
+                                                                                                  "Bypass"
+                                                                                              ],
+                                                                                     "source":  "PowerShell"
+                                                                                 }
+                                                              },
+                     "terminal.integrated.env.windows":  {
+                                                             "VIRTUAL_ENV":  "${workspaceFolder}\\.venv",
+                                                             "PATH":  "${workspaceFolder}\\.venv\\Scripts;${env:PATH}",
+                                                             "VIRTUAL_ENV_PROMPT":  ".venv"
+                                                         },
+                     "python.analysis.extraPaths":  [
+                                                        "../mlBridge",
+                                                        "../streamlitlib",
+                                                        "../acbllib"
+                                                    ],
+                     "python.analysis.autoImportCompletions":  true,
+                     "cursorpyright.analysis.autoImportCompletions":  true,
+                     "cursorpyright.analysis.extraPaths":  [
+                                                               "../mlBridge",
+                                                               "../streamlitlib",
+                                                               "../acbllib"
+                                                           ]
+                 }
+}

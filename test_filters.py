@@ -5,8 +5,7 @@ import unittest
 
 import polars as pl
 
-from bridgestats import apply_filters, create_query
-from handstats import apply_regex_filter
+from bridgestatslib import apply_filters, apply_regex_filter, create_query
 import bridgestatslib
 
 

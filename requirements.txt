@@ -2,6 +2,8 @@
 altair
 endplay
 duckdb
+fastapi
+httpx
 matplotlib
 pandas
 polars
@@ -11,6 +13,7 @@ sqlalchemy
 sqlalchemy_utils
 streamlit
 streamlit-aggrid==1.1.8.post1
+uvicorn
 #streamlit-datalist
 streamlit-extras
 seaborn

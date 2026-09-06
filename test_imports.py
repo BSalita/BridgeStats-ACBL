@@ -27,8 +27,8 @@ class ImportTests(unittest.TestCase):
 
         import bridgestats
 
-        self.assertTrue(hasattr(bridgestats, "apply_filters"))
         self.assertTrue(hasattr(bridgestats, "Stats"))
+        self.assertTrue(hasattr(bridgestats, "api"))
         self.assertNotIn("acbllib", sys.modules)
         self.assertNotIn("mlBridge", sys.modules)
         self.assertNotIn("mlBridge.mlBridgeLib", sys.modules)

@@ -86,6 +86,12 @@ class ReportLibTests(unittest.TestCase):
         self.assertEqual(back.height, 121)
         self.assertEqual(back["club_enrolled"][-1], "2018-12-29")
 
+    def test_tournament_probe_excludes_optional_club(self) -> None:
+        _filename, required, optional = lib.SOURCE_FILES["tournament_board_results"]
+        probe = lib.source_probe_columns(required, optional)
+        self.assertNotIn("Club", probe)
+        self.assertIn("session_id", probe)
+
 
 if __name__ == "__main__":
     unittest.main()

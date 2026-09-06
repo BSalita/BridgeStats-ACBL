@@ -213,6 +213,11 @@ def data_search_roots() -> List[pathlib.Path]:
     return unique
 
 
+def source_probe_columns(required, optional=()) -> Tuple[str, ...]:
+    """Columns used to reject stale parquets. Skip source-optional names (Club)."""
+    return tuple(col for col in required if col not in optional)[:2]
+
+
 def resolve_data_file(*names, required_columns=()):
     """Return the first existing path among names in the search roots.
 
@@ -223,13 +228,14 @@ def resolve_data_file(*names, required_columns=()):
     for root in data_search_roots():
         for name in names:
             path = root / name
-            tried.append(str(path))
             if not path.is_file():
+                tried.append(str(path))
                 continue
             if required_columns:
                 schema = pl.read_parquet_schema(str(path))
                 missing = [col for col in required_columns if col not in schema]
                 if missing:
+                    tried.append(f"{path} (missing columns: {', '.join(missing)})")
                     continue
             return path
     raise FileNotFoundError("Missing data file (tried): " + "; ".join(tried))
@@ -610,7 +616,9 @@ def resolve_source_path(source: str) -> pathlib.Path:
             f"Unknown source {source!r}. Expected one of: {', '.join(SOURCE_FILES)}"
         )
     filename, required, optional = SOURCE_FILES[source]
-    return resolve_data_file(filename, required_columns=required[:2] if required else ())
+    return resolve_data_file(
+        filename, required_columns=source_probe_columns(required, optional)
+    )
 
 
 def add_board_scoring_columns(df: pl.DataFrame) -> pl.DataFrame:
@@ -1018,9 +1026,11 @@ def chart_series(
 
 def dataset_info() -> Dict[str, Any]:
     sources: Dict[str, Any] = {}
-    for source, (filename, required, _optional) in SOURCE_FILES.items():
+    for source, (filename, required, optional) in SOURCE_FILES.items():
         try:
-            path = resolve_data_file(filename, required_columns=required[:1] or ())
+            path = resolve_data_file(
+                filename, required_columns=source_probe_columns(required, optional)
+            )
             schema = pl.read_parquet_schema(str(path))
             sources[source] = {
                 "available": True,

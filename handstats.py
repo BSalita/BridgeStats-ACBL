@@ -49,8 +49,7 @@ def Stats(club_or_tournament, pair_or_player, chart_options, groupby):
 
     key_prefix = club_or_tournament # pair_or_player isn't used here
 
-    rootPath = pathlib.Path('.')
-    dataPath = rootPath.joinpath('data')
+    dataPath = bridgestatslib.resolve_data_path()
 
     acbl_hand_records_augmented_filename = f"acbl_{club_or_tournament}_hand_records_augmented_narrow.parquet"
     acbl_hand_records_augmented_file = dataPath.joinpath(acbl_hand_records_augmented_filename)

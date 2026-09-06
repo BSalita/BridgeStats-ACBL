@@ -26,8 +26,7 @@ st.sidebar.header("Settings for Club Lookup")
 
 st.sidebar.header("Settings")
 
-rootPath = pathlib.Path('.')
-dataPath = rootPath.joinpath('data')
+dataPath = bridgestatslib.resolve_data_path()
 
 with st.spinner(text="Reading data ..."):
     start_time = time.time()

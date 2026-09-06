@@ -1,6 +1,7 @@
 ﻿# todo:
 
 import streamlit as st
+import os
 import pathlib
 import pickle
 import pyarrow.parquet as pq
@@ -11,6 +12,18 @@ import altair as alt
 import matplotlib.pyplot as plt
 import time
 import sys
+
+DATA_DIR_ENV = 'BRIDGESTATS_DATA_DIR'
+
+
+def resolve_data_path():
+    """Return the parquet/pkl data directory. Env override wins; never auto-select E:."""
+    env = os.environ.get(DATA_DIR_ENV)
+    if env:
+        return pathlib.Path(env)
+    return pathlib.Path(__file__).resolve().parent / 'data'
+
+
 _APP_DIR = pathlib.Path(__file__).resolve().parent
 _SRC_DIR = _APP_DIR.parent
 _streamlit = next((p for p in (_APP_DIR / 'streamlitlib', _SRC_DIR / 'streamlitlib') if p.is_dir()), None)
@@ -131,7 +144,7 @@ def ShowCharts(selected_df,selected_charts,stat_column=None,column_filter='.*'):
         declarer_groups = (
             selected_df
             .group_by(['Declarer', 'Declarer_Name'])
-            .agg(pl.count())
+            .agg(pl.len())
         )
         st.info(f"Selected: Unique declarers:{len(declarer_groups)} rows:{selected_df_len} charts:{available_charts}")
     else:

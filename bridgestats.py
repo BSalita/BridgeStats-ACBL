@@ -19,41 +19,15 @@ import bridgestatslib
 import sys
 import os
 
-# todo: doesn't some variation of import chatlib.chatlib work instead of using sys.path.append such as exporting via __init__.py?
-#import acbllib.acbllib
-#import streamlitlib.streamlitlib
-#import chatlib.chatlib
-#import mlBridgeLib.mlBridgeLib
 _APP_DIR = pathlib.Path(__file__).resolve().parent
 _SRC_DIR = _APP_DIR.parent
-_REQUIRED_LIBS = ('mlBridge', 'streamlitlib', 'acbllib')
-_resolved_libs = []
-for _name in _REQUIRED_LIBS:
-    _local, _sibling = _APP_DIR / _name, _SRC_DIR / _name
-    if _local.is_dir():
-        _resolved_libs.append(_local)
-    elif _sibling.is_dir():
-        _resolved_libs.append(_sibling)
-    else:
-        raise FileNotFoundError(f"{_name} not found at {_local} or {_sibling}")
-# Package root for import mlBridge.*; lib dirs first for legacy import streamlitlib/acbllib.
-for _p in (_SRC_DIR, _APP_DIR):
+_streamlit = next((p for p in (_APP_DIR / 'streamlitlib', _SRC_DIR / 'streamlitlib') if p.is_dir()), None)
+if _streamlit is None:
+    raise FileNotFoundError(f"streamlitlib not found under {_APP_DIR} or {_SRC_DIR}")
+for _p in (_SRC_DIR, _streamlit):
     _s = str(_p)
     if _s not in sys.path:
         sys.path.append(_s)
-for _p in _resolved_libs:
-    _s = str(_p)
-    if _p.name == 'mlBridge':
-        if _s not in sys.path:
-            sys.path.append(_s)  # logging_config and friends
-    else:
-        if _s in sys.path:
-            sys.path.remove(_s)
-        sys.path.insert(0, _s)
-# streamlitlib, mlBridge, chatlib must be placed after sys.path.append. vscode re-format likes to move them to the top
-import acbllib
-#import chatlib  # must be placed after sys.path.append. vscode re-format likes to move this to the top
-import mlBridge.mlBridgeLib as mlBridgeLib  # must be placed after sys.path.append. vscode re-format likes to move this to the top
 import streamlitlib # must be placed after sys.path.append. vscode re-format likes to move this to the top
 
 
@@ -170,15 +144,7 @@ def Stats(club_or_tournament, pair_or_player, chart_options, groupby):
 
     key_prefix = groupby[0]+club_or_tournament+'_'+pair_or_player # assumes groupby[0] is unique
 
-    st.session_state.rootPath = pathlib.Path('e:/bridge/data')
-    if st.session_state.rootPath.exists():
-        st.session_state.acblPath = st.session_state.rootPath.joinpath('acbl')
-        st.session_state.dataPath = st.session_state.acblPath.joinpath('.')
-    else:
-        st.session_state.rootPath = pathlib.Path('.')
-        if not st.session_state.rootPath.exists():
-            st.error(f'rootPath does not exist: {st.session_state.rootPath}')
-        st.session_state.dataPath = st.session_state.rootPath.joinpath('data')
+    st.session_state.dataPath = bridgestatslib.resolve_data_path()
     if not st.session_state.dataPath.exists():
         st.error(f'dataPath does not exist: {st.session_state.dataPath}')
 
@@ -333,9 +299,6 @@ def Stats(club_or_tournament, pair_or_player, chart_options, groupby):
             board_results_df = board_results_df.with_columns(pl.col('Player_Number_E').alias('Player_ID_E'))
             board_results_df = board_results_df.with_columns(pl.col('Player_Number_S').alias('Player_ID_S'))
             board_results_df = board_results_df.with_columns(pl.col('Player_Number_W').alias('Player_ID_W'))
-
-        st.error('todo: implement missing augmented columns by moving into board_results_augmented.parquet')
-        st.error('todo: remove df.select(df.columns[:100])')
 
         board_results_df = board_results_df.with_columns((pl.col('Declarer')+'_'+pl.col('Dummy')).alias('Declarer_Pair'))
         board_results_df = board_results_df.with_columns((pl.col('OnLead')+'_'+pl.col('NotOnLead')).alias('Defender_Pair'))
@@ -603,7 +566,7 @@ def Stats(club_or_tournament, pair_or_player, chart_options, groupby):
 
                     # 1. Count rows per group.
                     group_counts = selected_df.group_by(["Date", "Session", "HandRecordBoard"]).agg(
-                        pl.count().alias("group_count")
+                        pl.len().alias("group_count")
                     )
 
                     # 2. Join the counts back to the original DataFrame.
@@ -687,7 +650,7 @@ def Stats(club_or_tournament, pair_or_player, chart_options, groupby):
 
                         # Step 2: Compute group counts per ["Date", "Session", "HandRecordBoard"].
                         group_counts = unique_df.group_by(["Date", "Session", "HandRecordBoard"]).agg(
-                            pl.count().alias("group_count"),
+                            pl.len().alias("group_count"),
                             pl.col("Declarer").alias("Declarers")
                         )
 

@@ -34,8 +34,7 @@ st.sidebar.header("Settings")
 
 key_prefix = 'Player_Lookup'
 
-rootPath = pathlib.Path('.')
-dataPath = rootPath.joinpath('data')
+dataPath = bridgestatslib.resolve_data_path()
 
 with st.spinner(text="Reading data ..."):
     start_time = time.time()

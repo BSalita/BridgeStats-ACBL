@@ -5,7 +5,7 @@ rem found at runtime via resolve_data_file. Only the small lookup/narrow files
 rem are copied into data\ and published to prod.
 
 set "acbl_source=e:\bridge\data\acbl"
-set "prod_bridgestats=\\X1-pro-470-1tb\c\sw\bridge\ML-Contract-Bridge\src\bridgestats\data"
+set "prod_bridgestats=\\X1-pro-470-1tb\c\sw\bridge\ML-Contract-Bridge\src\bridgestats-acbl\data"
 
 if not exist "data\" (
     mkdir data
@@ -27,7 +27,7 @@ if exist "%acbl_source%\" (
 )
 
 for %%I in ("data") do set "local_data=%%~fI"
-if /i "%local_data%"=="C:\sw\bridge\ML-Contract-Bridge\src\bridgestats\data" (
+if /i "%local_data%"=="C:\sw\bridge\ML-Contract-Bridge\src\bridgestats-acbl\data" (
     echo Already on prod host; using local data\ and skipping UNC publish.
     exit /b 0
 )

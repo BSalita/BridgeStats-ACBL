@@ -134,6 +134,26 @@ class FilterTests(unittest.TestCase):
         self.assertNotIn("Declarer_Score", out.columns)
         self.assertNotIn("Session", out.columns)
 
+    def test_player_position_frequency_counts_passed_out_boards(self) -> None:
+        df = pl.DataFrame(
+            {
+                "Player_ID_N": ["2663279", "2663279"],
+                "Player_ID_E": ["2", "2"],
+                "Player_ID_S": ["3", "3"],
+                "Player_ID_W": ["4", "4"],
+                "Declarer": ["2663279", None],
+                "Dummy": ["3", None],
+                "OnLead": ["2", None],
+                "NotOnLead": ["4", None],
+                "Declarer_Name": ["Robert", None],
+            }
+        )
+        out = bridgestatslib.player_position_frequency(df, ["2663279"])
+        self.assertEqual(out["Count"][0], 2)
+        self.assertEqual(out["PassedOut"][0], 1)
+        self.assertEqual(out["Declarer"][0], 1)
+        self.assertEqual(out["N"][0], 2)
+
 
 if __name__ == "__main__":
     unittest.main()

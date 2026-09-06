@@ -178,8 +178,6 @@ def Stats(club_or_tournament, pair_or_player, chart_options, groupby):
     #maximum_mps = st.sidebar.number_input('Enter maximum master points (default is 9999999):', value=9999999, max_value=9999999, key=key_prefix+'-MP_Max')
     maximum_mps = 9999999
     
-    st.warning('Table and charts take from a few seconds to 120 seconds to render. Please be patient. Wait for the man in the upper-right corner to stop running ... Initial load is slowest.')
-
     with st.spinner(text="Reading board result data ..."):
         start_time = time.time()
         board_results_df = bridgestatslib.load_board_results(
@@ -326,40 +324,9 @@ def Stats(club_or_tournament, pair_or_player, chart_options, groupby):
             # todo: do this when no players (all)?
             # todo: create 2nd table by pairs
             if len(players):
-                d = {}
-                cols = ['Player','Player_Name','Count','N','E','S','W','N_Pct','E_Pct','S_Pct','W_Pct','Declarer','OnLead','Dummy','NotOnLead','Declarer_Pct','OnLead_Pct','Dummy_Pct','NotOnLead_Pct']
-                for col in cols:
-                    d[col] = []
-                for player in players:
-                    d['Player'].append(player)
-                    # Keep as string to match DataFrame column types
-                    player_df = any_position.filter(pl.col('Declarer').eq(player))
-                    d['Player_Name'].append(None if player_df.height == 0 else player_df.select('Declarer_Name').tail(1).row(0)[0])
-                    pos_total = 0
-                    for pos in ['Declarer','OnLead','Dummy','NotOnLead']:
-                        pos_sum = any_position.select(pl.col(pos).eq(player).sum()).item()
-                        d[pos].append(pos_sum)
-                        pos_total += pos_sum
-                    for pos in ['Declarer','OnLead','Dummy','NotOnLead']:
-                        d[pos+'_Pct'].append(d[pos][-1]/pos_total if pos_total > 0 else 0)
-                    direction_total = 0
-                    for direction in ['Player_ID_N','Player_ID_E','Player_ID_S','Player_ID_W']:
-                        if direction in any_position.columns:
-                            direction_sum = any_position.select(pl.col(direction).eq(player).sum()).item()
-                            d[direction[-1]].append(direction_sum)
-                            direction_total += direction_sum
-                        else:
-                            d[direction[-1]].append(0)
-                    for direction in 'NESW':
-                        d[direction+'_Pct'].append(d[direction][-1]/direction_total if direction_total > 0 else 0)
-                    # Debug information if totals don't match
-                    if pos_total != direction_total:
-                        st.warning(f"Position total ({pos_total}) != Direction total ({direction_total}) for player {player}. Using position total.")
-                        direction_total = pos_total  # Use pos_total as it's more reliable
-                    d['Count'].append(pos_total)
-                st.info(f"Frequency of Player Positions")
-                df = pl.DataFrame(d,strict=False)
-                streamlitlib.ShowDataFrameTable(df.select(df.columns[:100]),round=2)
+                df = bridgestatslib.player_position_frequency(any_position, players)
+                st.info("Frequency of player positions. PassedOut is boards sat with no contract (usually passed out).")
+                streamlitlib.ShowDataFrameTable(df.select(df.columns[:100]), round=2)
                 del df
 
 

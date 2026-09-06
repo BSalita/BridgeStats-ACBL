@@ -183,6 +183,53 @@ def apply_filters(board_results_df, clubs, players, pairs, start_date, end_date)
     return df
 
 
+def player_position_frequency(df, players):
+    """Boards sat by seat. Passed-out boards have no Declarer/Dummy/OnLead/NotOnLead."""
+    rows = []
+    for player in players:
+        player = str(player)
+        named = df.filter(pl.col('Declarer').eq(player))
+        if named.height == 0 and 'Declarer_Name' in df.columns:
+            named = df.filter(
+                pl.col('Player_ID_N').eq(player)
+                | pl.col('Player_ID_E').eq(player)
+                | pl.col('Player_ID_S').eq(player)
+                | pl.col('Player_ID_W').eq(player)
+            )
+        player_name = None
+        if named.height and 'Declarer_Name' in named.columns:
+            player_name = named.select('Declarer_Name').tail(1).row(0)[0]
+
+        seats = {}
+        for pos in ('Declarer', 'OnLead', 'Dummy', 'NotOnLead'):
+            seats[pos] = int(df.select(pl.col(pos).eq(player).sum()).item())
+        contract_total = sum(seats.values())
+
+        directions = {}
+        direction_total = 0
+        for col, seat in (('Player_ID_N', 'N'), ('Player_ID_E', 'E'), ('Player_ID_S', 'S'), ('Player_ID_W', 'W')):
+            count = int(df.select(pl.col(col).eq(player).sum()).item()) if col in df.columns else 0
+            directions[seat] = count
+            direction_total += count
+
+        passed_out = max(direction_total - contract_total, 0)
+        denom = direction_total if direction_total else contract_total
+        row = {
+            'Player': player,
+            'Player_Name': player_name,
+            'Count': denom,
+            'PassedOut': passed_out,
+        }
+        for seat, count in directions.items():
+            row[seat] = count
+            row[f'{seat}_Pct'] = count / denom if denom else 0
+        for pos, count in seats.items():
+            row[pos] = count
+            row[f'{pos}_Pct'] = count / denom if denom else 0
+        rows.append(row)
+    return pl.DataFrame(rows, strict=False)
+
+
 _APP_DIR = pathlib.Path(__file__).resolve().parent
 _SRC_DIR = _APP_DIR.parent
 _streamlit = next((p for p in (_APP_DIR / 'streamlitlib', _SRC_DIR / 'streamlitlib') if p.is_dir()), None)

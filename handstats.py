@@ -74,8 +74,6 @@ def Stats(club_or_tournament, pair_or_player, chart_options, groupby):
     table_display_limit = 100 # streamlit gets choked up pretty quickly. need to limit table to 100.
     sample_size = 100000
 
-    st.warning('Table and charts take up to 30 to 60 seconds to render.')
-
     with st.spinner(text="Reading hand record data ..."):
         start_time = time.time()
         hand_records_df = bridgestatslib.load_hand_records(acbl_hand_records_augmented_file)

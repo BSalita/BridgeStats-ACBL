@@ -6,6 +6,8 @@ rem are copied into data\ and published to prod.
 
 set "acbl_source=e:\bridge\data\acbl"
 set "prod_bridgestats=\\X1-pro-470-1tb\c\sw\bridge\ML-Contract-Bridge\src\bridgestats-acbl\data"
+rem Do not treat C:\sw\bridge\...\data as prod: that path is also the OneDrive
+rem junction on the data host (P620). Detect the prod box by computer name.
 
 if not exist "data\" (
     mkdir data
@@ -26,8 +28,7 @@ if exist "%acbl_source%\" (
     )
 )
 
-for %%I in ("data") do set "local_data=%%~fI"
-if /i "%local_data%"=="C:\sw\bridge\ML-Contract-Bridge\src\bridgestats-acbl\data" (
+if /i "%COMPUTERNAME%"=="X1-PRO-470-1TB" (
     echo Already on prod host; using local data\ and skipping UNC publish.
     exit /b 0
 )

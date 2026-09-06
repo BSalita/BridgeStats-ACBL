@@ -78,6 +78,14 @@ class ReportLibTests(unittest.TestCase):
         back = lib.table_to_frame(table)
         self.assertEqual(back.height, 1)
 
+    def test_table_to_frame_accepts_late_date_strings(self) -> None:
+        rows = [{"club_enrolled": None} for _ in range(120)]
+        rows.append({"club_enrolled": "2018-12-29"})
+        table = {"columns": ["club_enrolled"], "rows": rows, "row_count": len(rows)}
+        back = lib.table_to_frame(table)
+        self.assertEqual(back.height, 121)
+        self.assertEqual(back["club_enrolled"][-1], "2018-12-29")
+
 
 if __name__ == "__main__":
     unittest.main()

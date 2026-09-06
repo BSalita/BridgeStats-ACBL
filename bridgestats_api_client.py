@@ -213,4 +213,6 @@ def table_to_frame(table: Optional[Dict[str, Any]]) -> pl.DataFrame:
     if not table or not table.get("rows"):
         columns = table.get("columns") if table else None
         return pl.DataFrame({col: [] for col in columns}) if columns else pl.DataFrame()
-    return pl.DataFrame(table["rows"], strict=False)
+    # Scan every row. Club lookup has date strings that appear after a long
+    # run of nulls; the default infer_schema_length=100 then rejects them.
+    return pl.DataFrame(table["rows"], strict=False, infer_schema_length=None)

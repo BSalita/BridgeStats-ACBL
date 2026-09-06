@@ -57,6 +57,13 @@ for %%F in (
     )
 )
 
+rem Already on the prod checkout: data\ is the container mount. Skip UNC.
+for %%I in ("data") do set "local_data=%%~fI"
+if /i "%local_data%"=="C:\sw\bridge\ML-Contract-Bridge\src\bridgestats\data" (
+    echo Already on prod host; using local data\ and skipping UNC publish.
+    exit /b 0
+)
+
 if not exist "%prod_bridgestats%\" (
     mkdir "%prod_bridgestats%"
     if errorlevel 1 (

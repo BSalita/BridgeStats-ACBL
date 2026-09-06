@@ -2,7 +2,7 @@
 import handstats
 
 if __name__ == '__main__':
-    chart_options = ['Declarer_ParScore','ContractType','Declarer_ParScore','Declarer_Pct','Declarer_DD_Tricks','Declarer_DD_Score','Declarer_DD_Pct','Declarer_Tricks_DD_Diff','Declarer_Score_DD_Diff','Declarer_ParScore_DD_Diff']
+    chart_options = ['ParScore','CT_N_S,CT_N_H,CT_N_D,CT_N_C,CT_N_N','DD_N_C,DD_N_D,DD_N_H,DD_N_S,DD_N_N']
     club_or_tournament = 'club'
     pair_or_player = None
     groupby = None

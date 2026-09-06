@@ -3,7 +3,6 @@
 import streamlit as st
 import os
 import pathlib
-import pickle
 import pyarrow.parquet as pq
 import duckdb
 import polars as pl
@@ -14,14 +13,172 @@ import time
 import sys
 
 DATA_DIR_ENV = 'BRIDGESTATS_DATA_DIR'
+EXTRA_DATA_DIR_ENV = 'BRIDGESTATS_EXTRA_DATA_DIR'
+
+BOARD_RESULT_COLUMNS = (
+    'Club', 'session_id', 'Date',
+    'Declarer_Direction', 'Declarer', 'Dummy', 'OnLead', 'NotOnLead',
+    'Declarer_Name',
+    'Player_ID_N', 'Player_ID_E', 'Player_ID_S', 'Player_ID_W',
+    'Player_Name_N', 'Player_Name_E', 'Player_Name_S', 'Player_Name_W',
+    'Vul_Declarer', 'ParScore', 'MP_Par_Pct_Declarer', 'Score_Declarer',
+    'DD_Tricks', 'Tricks', 'DD_Score_Declarer', 'MP_DD_Pct_Declarer',
+    'EV_Score_Declarer', 'EV_Max_Declarer', 'MP_EV_Pct_Declarer',
+    'MP_EV_Max_Pct_Declarer', 'Declarer_Pct',
+    'HandRecordBoard', 'Board', 'Result', 'BidLvl', 'BidSuit', 'Dbl', 'Vul',
+    'ContractType', 'PBN',
+)
+
+BOARD_RESULT_OPTIONAL_COLUMNS = ('Club', 'Declarer', 'Player_Name_N', 'Player_Name_E', 'Player_Name_S', 'Player_Name_W')
+
+HAND_RECORD_COLUMNS = (
+    'PBN', 'HandRecordBoard', 'game_date', 'session_id',
+    'ParScore', 'CT_N_S', 'CT_N_H', 'CT_N_D', 'CT_N_C', 'CT_N_N',
+    'DD_N_C', 'DD_N_D', 'DD_N_H', 'DD_N_S', 'DD_N_N',
+    'SL_N_C', 'SL_N_D', 'SL_N_H', 'SL_N_S', 'SL_N_ML_SJ',
+    'HCP_NS', 'HCP_EW', 'HCP_N', 'HCP_E', 'HCP_S', 'HCP_W',
+    'QT_N', 'QT_E', 'QT_S', 'QT_W', 'QT_NS', 'QT_EW',
+    'DP_N', 'DP_N_C', 'DP_N_D', 'DP_N_H', 'DP_N_S', 'DP_NS', 'DP_EW',
+)
 
 
 def resolve_data_path():
-    """Return the parquet/pkl data directory. Env override wins; never auto-select E:."""
+    """Primary data directory. Env override wins; default is <repo>/data."""
     env = os.environ.get(DATA_DIR_ENV)
     if env:
         return pathlib.Path(env)
     return pathlib.Path(__file__).resolve().parent / 'data'
+
+
+def data_search_roots():
+    """Places to look for pipeline parquets. Large Stage 3c files stay on E: / acbl-pipeline."""
+    roots = []
+    for key in (DATA_DIR_ENV, EXTRA_DATA_DIR_ENV):
+        env = os.environ.get(key)
+        if env:
+            roots.append(pathlib.Path(env))
+    roots.append(pathlib.Path(__file__).resolve().parent / 'data')
+    e_acbl = pathlib.Path('e:/bridge/data/acbl')
+    if e_acbl.exists():
+        roots.append(e_acbl)
+    pipeline = pathlib.Path(__file__).resolve().parent.parent / 'acbl-pipeline' / 'club_results_parquet'
+    if pipeline.exists():
+        roots.append(pipeline)
+    seen = set()
+    unique = []
+    for root in roots:
+        key = str(root)
+        if key not in seen:
+            seen.add(key)
+            unique.append(root)
+    return unique
+
+
+def resolve_data_file(*names, required_columns=()):
+    """Return the first existing path among names in the search roots.
+
+    If required_columns is set, skip files whose schema is missing those
+    current pipeline names (stale local copies).
+    """
+    tried = []
+    for root in data_search_roots():
+        for name in names:
+            path = root / name
+            tried.append(str(path))
+            if not path.is_file():
+                continue
+            if required_columns:
+                schema = pl.read_parquet_schema(str(path))
+                missing = [col for col in required_columns if col not in schema]
+                if missing:
+                    continue
+            return path
+    raise FileNotFoundError('Missing data file (tried): ' + '; '.join(tried))
+
+
+def _select_columns(schema, wanted, optional=()):
+    missing = [col for col in wanted if col not in schema and col not in optional]
+    if missing:
+        raise ValueError('Missing required columns: ' + ', '.join(missing))
+    return [col for col in wanted if col in schema]
+
+
+def normalize_board_results(df):
+    """Compute pair keys and diffs from current pipeline columns only."""
+    if 'Declarer' not in df.columns:
+        needed = {'Declarer_Direction', 'Player_ID_N', 'Player_ID_E', 'Player_ID_S', 'Player_ID_W'}
+        if not needed.issubset(df.columns):
+            raise ValueError('Declarer is required, or Declarer_Direction plus Player_ID_N/E/S/W')
+        df = df.with_columns(
+            pl.struct(['Declarer_Direction', 'Player_ID_N', 'Player_ID_E', 'Player_ID_S', 'Player_ID_W']).map_elements(
+                lambda r: None if r['Declarer_Direction'] is None else r[f"Player_ID_{r['Declarer_Direction']}"],
+                return_dtype=pl.String,
+            ).alias('Declarer')
+        )
+    df = df.with_columns([
+        (pl.col('Tricks') - pl.col('DD_Tricks')).alias('Tricks_DD_Diff'),
+        (pl.col('Score_Declarer') - pl.col('DD_Score_Declarer')).alias('Score_Declarer_DD_Diff'),
+        (pl.col('ParScore') - pl.col('DD_Score_Declarer')).alias('ParScore_DD_Diff'),
+        (pl.col('EV_Score_Declarer') - pl.col('Score_Declarer')).alias('EV_Score_Declarer_Diff'),
+        (pl.col('EV_Max_Declarer') - pl.col('Score_Declarer')).alias('EV_Max_Declarer_Diff'),
+        (pl.col('MP_EV_Pct_Declarer') - pl.col('Declarer_Pct')).alias('MP_EV_Pct_Declarer_Diff'),
+        (pl.col('MP_EV_Max_Pct_Declarer') - pl.col('Declarer_Pct')).alias('MP_EV_Max_Pct_Declarer_Diff'),
+        (pl.col('MP_EV_Max_Pct_Declarer') - pl.col('MP_Par_Pct_Declarer')).alias('MP_EV_ParScore_Pct_Diff'),
+        (pl.col('MP_EV_Max_Pct_Declarer') - pl.col('MP_Par_Pct_Declarer')).alias('MP_EV_ParScore_Pct_Max_Diff'),
+        (pl.col('Declarer').cast(pl.Utf8) + '_' + pl.col('Dummy').cast(pl.Utf8)).alias('Declarer_Pair'),
+        (pl.col('OnLead').cast(pl.Utf8) + '_' + pl.col('NotOnLead').cast(pl.Utf8)).alias('Defender_Pair'),
+    ])
+    for col in ('Declarer', 'Dummy', 'OnLead', 'NotOnLead', 'Player_ID_N', 'Player_ID_E', 'Player_ID_S', 'Player_ID_W', 'session_id'):
+        df = df.with_columns(pl.col(col).cast(pl.Utf8))
+    return df
+
+
+def normalize_hand_records(df):
+    return df
+
+
+def apply_filters(board_results_df, clubs, players, pairs, start_date, end_date):
+    """Filter board results. Works on DataFrame or LazyFrame."""
+    df = board_results_df
+    columns = set(df.collect_schema().names()) if isinstance(df, pl.LazyFrame) else set(df.columns)
+
+    if clubs and 'Club' in columns:
+        club_list = [int(club) for club in clubs]
+        df = df.filter(pl.col('Club').is_in(club_list))
+
+    if players:
+        player_list = [str(p) for p in players]
+        player_columns = []
+        for col_name in ('Player_ID_N', 'Player_ID_E', 'Player_ID_S', 'Player_ID_W'):
+            if col_name in columns:
+                player_columns.append(pl.col(col_name).cast(pl.Utf8).is_in(player_list))
+        if player_columns:
+            player_filter = player_columns[0]
+            for col_filter in player_columns[1:]:
+                player_filter = player_filter | col_filter
+            df = df.filter(player_filter)
+
+    if pairs and {'Declarer', 'Dummy'}.issubset(columns):
+        pair_condition = None
+        for pair in pairs:
+            p1, p2 = pair.split('_')
+            current = (
+                ((pl.col('Declarer').cast(pl.Utf8) == p1) & (pl.col('Dummy').cast(pl.Utf8) == p2))
+                | ((pl.col('Declarer').cast(pl.Utf8) == p2) & (pl.col('Dummy').cast(pl.Utf8) == p1))
+            )
+            pair_condition = current if pair_condition is None else pair_condition | current
+        if pair_condition is not None:
+            df = df.filter(pair_condition)
+
+    if start_date and end_date and 'Date' in columns:
+        import datetime
+        start_date_obj = datetime.datetime.strptime(start_date, '%Y-%m-%d').date()
+        end_date_obj = datetime.datetime.strptime(end_date, '%Y-%m-%d').date()
+        df = df.filter(
+            (pl.col('Date').cast(pl.Date) >= start_date_obj)
+            & (pl.col('Date').cast(pl.Date) <= end_date_obj)
+        )
+    return df
 
 
 _APP_DIR = pathlib.Path(__file__).resolve().parent
@@ -36,58 +193,66 @@ for _p in (_SRC_DIR, _streamlit):
 import streamlitlib # must be placed after sys.path.append. vscode re-format likes to move this to the top
 
 
-@st.cache_resource()
+@st.cache_data(show_spinner=False)
+def load_board_results(filename, clubs=(), players=(), pairs=(), start_date=None, end_date=None):
+    """Column-project the Stage 3c monolith, then collect the filtered slice."""
+    path = str(filename)
+    schema = pl.read_parquet_schema(path)
+    columns = _select_columns(schema, BOARD_RESULT_COLUMNS, BOARD_RESULT_OPTIONAL_COLUMNS)
+    lf = pl.scan_parquet(path).select(columns)
+    df = lf.collect()
+    df = normalize_board_results(df)
+    return apply_filters(df, list(clubs), list(players), list(pairs), start_date, end_date)
+
+
+@st.cache_data(show_spinner=False)
+def load_hand_records(filename):
+    path = str(filename)
+    schema = pl.read_parquet_schema(path)
+    columns = _select_columns(schema, HAND_RECORD_COLUMNS)
+    df = pl.scan_parquet(path).select(columns).collect()
+    return normalize_hand_records(df)
+
+
+@st.cache_data(show_spinner=False)
+def load_player_name_dict():
+    path = resolve_data_file('acbl_player_info.parquet')
+    df = pl.read_parquet(path, columns=['acbl_number', 'first_name', 'last_name'])
+    df = df.with_columns([
+        pl.col('acbl_number').cast(pl.Utf8),
+        pl.col('first_name').fill_null(''),
+        pl.col('last_name').fill_null(''),
+    ])
+    names = (df['first_name'] + ' ' + df['last_name']).str.strip_chars()
+    return dict(zip(df['acbl_number'].to_list(), names.to_list()))
+
+
+@st.cache_data(show_spinner=False)
+def load_player_info_df(filename=None):
+    path = filename or resolve_data_file('acbl_player_info.parquet')
+    return pl.read_parquet(path)
+
+
+@st.cache_data(show_spinner=False)
+def load_club_df(filename=None):
+    path = filename or resolve_data_file('acbl_club_clubs_cleaned.parquet')
+    return pl.read_parquet(path)
+
+
 def load_club_hand_records(filename):
-    return pl.read_parquet(filename)
+    return load_hand_records(filename)
 
 
-@st.cache_resource()
-def load_club_board_results(filename):
-    return pl.read_parquet(filename)
-
-
-@st.cache_resource()
-def load_club_player_d(filename):
-    with open(filename, 'rb') as f:
-        return pickle.load(f)
-
-
-@st.cache_resource()
-def load_club_hand_records_d(filename):
-    with open(filename, 'rb') as f:
-        return pickle.load(f)
-
-
-@st.cache_resource()
 def load_tournament_hand_records(filename):
-    return pl.read_parquet(filename)
+    return load_hand_records(filename)
 
 
-@st.cache_resource()
-def load_tournament_board_results(filename):
-    return pl.read_parquet(filename)
+def load_club_board_results(filename, **kwargs):
+    return load_board_results(filename, **kwargs)
 
 
-@st.cache_resource()
-def load_player_info_df(filename):
-    return pl.read_parquet(filename)
-
-
-@st.cache_resource()
-def load_club_df(filename):
-    return pl.read_parquet(filename)
-
-
-@st.cache_resource()
-def load_tournament_player_d(filename):
-    with open(filename, 'rb') as f:
-        return pickle.load(f)
-
-
-@st.cache_resource()
-def load_tournament_hand_records_d(filename):
-    with open(filename, 'rb') as f:
-        return pickle.load(f)
+def load_tournament_board_results(filename, **kwargs):
+    return load_board_results(filename, **kwargs)
 
 
 # todo: is this obsolete? Seems to freeze or slow webpages.

@@ -3,8 +3,8 @@
 # 2. data table columns need to be ordered by importance. possibly eliminate some unimportant columns.
 
 import streamlit as st
+import datetime
 import pathlib
-import pickle
 import pyarrow.parquet as pq
 import polars as pl
 import altair as alt
@@ -30,7 +30,7 @@ def apply_regex_filter(hand_records_df, brs_regex, sample_size=100000):
     
     # Apply regex filter if provided
     if brs_regex:
-        df = df.filter(pl.col('board_record_string').str.contains(brs_regex))
+        df = df.filter(pl.col('PBN').str.contains(brs_regex))
     
     # Apply sampling if the dataframe is larger than sample_size
     if df.height > sample_size:
@@ -49,17 +49,17 @@ def Stats(club_or_tournament, pair_or_player, chart_options, groupby):
 
     key_prefix = club_or_tournament # pair_or_player isn't used here
 
-    dataPath = bridgestatslib.resolve_data_path()
-
-    acbl_hand_records_augmented_filename = f"acbl_{club_or_tournament}_hand_records_augmented_narrow.parquet"
-    acbl_hand_records_augmented_file = dataPath.joinpath(acbl_hand_records_augmented_filename)
+    acbl_hand_records_augmented_file = bridgestatslib.resolve_data_file(
+        f"acbl_{club_or_tournament}_hand_records_augmented_narrow.parquet",
+        required_columns=('PBN', 'game_date'),
+    )
 
     # tournament data is as early as 2013? club data as early as 2019?
     start_date = st.sidebar.text_input('Enter start date:', value='2000-01-01', key=key_prefix+'_HandRecord-Start_Date', help='Enter starting date in YYYY-MM-DD format. Earliest year is 2019')
     end_date_default = time.strftime("%Y-%m-%d")
     end_date = st.sidebar.text_input('Enter end date:', value=end_date_default, key=key_prefix+'_HandRecord-End_Date', help='Enter ending date in YYYY-MM-DD format.')
 
-    chart_options = ['ParScore','CT_NS,CT_EW','DD_N_C,DD_N_D,DD_N_H,DD_N_S,DD_N_N','SL_N_C,SL_N_D,SL_N_H,SL_N_S','SL_N_ML_SJ','HCP_NS,HCP_EW','HCP_N,HCP_E,HCP_S,HCP_W','QT_N,QT_E,QT_S,QT_W','QT_NS,QT_EW','DP_N','DP_N_C,DP_N_D,DP_N_H,DP_N_S','DP_NS,DP_EW','LoTT_Tricks','LoTT_Suit_Length','LoTT_Variance','HCP_NS,DP_NS,DD_N_N','HCP_NS,QT_NS,DD_N_N']
+    chart_options = ['ParScore','CT_N_S,CT_N_H,CT_N_D,CT_N_C,CT_N_N','DD_N_C,DD_N_D,DD_N_H,DD_N_S,DD_N_N','SL_N_C,SL_N_D,SL_N_H,SL_N_S','SL_N_ML_SJ','HCP_NS,HCP_EW','HCP_N,HCP_E,HCP_S,HCP_W','QT_N,QT_E,QT_S,QT_W','QT_NS,QT_EW','DP_N','DP_N_C,DP_N_D,DP_N_H,DP_N_S','DP_NS,DP_EW','HCP_NS,DP_NS,DD_N_N','HCP_NS,QT_NS,DD_N_N']
     selected_charts = st.sidebar.multiselect('Select charts to display', chart_options, default=chart_options, key=key_prefix+'_HandRecord-Charts')
 
     st.sidebar.header("Advanced Settings")
@@ -74,11 +74,7 @@ def Stats(club_or_tournament, pair_or_player, chart_options, groupby):
 
     with st.spinner(text="Reading hand record data ..."):
         start_time = time.time()
-        if club_or_tournament == 'club':
-            hand_records_df = bridgestatslib.load_club_hand_records(acbl_hand_records_augmented_file)
-            hand_records_df = hand_records_df.with_columns(pl.col('game_date').alias('Date')) # todo: consolidate Date/game_date
-        else:
-            hand_records_df = bridgestatslib.load_tournament_hand_records(acbl_hand_records_augmented_file)
+        hand_records_df = bridgestatslib.load_hand_records(acbl_hand_records_augmented_file)
         hand_records_len = hand_records_df.height
         database_column_names = hand_records_df.columns
         end_time = time.time()
@@ -90,13 +86,14 @@ def Stats(club_or_tournament, pair_or_player, chart_options, groupby):
         # Apply regex filter and sampling using pure Polars operations
         selected_df = apply_regex_filter(hand_records_df, brs_regex, sample_size)
         
-        # Drop duplicates based on board_record_string
-        selected_df = selected_df.unique(subset=["board_record_string"])
+        selected_df = selected_df.unique(subset=["PBN"])
         uniques = selected_df.height
         
         # Filter by date range
+        start_date_obj = datetime.datetime.strptime(start_date, '%Y-%m-%d').date()
+        end_date_obj = datetime.datetime.strptime(end_date, '%Y-%m-%d').date()
         selected_df = selected_df.filter(
-            (pl.col('Date') >= start_date) & (pl.col('Date') <= end_date)
+            (pl.col('game_date').cast(pl.Date) >= start_date_obj) & (pl.col('game_date').cast(pl.Date) <= end_date_obj)
         )
         selected_df_len = selected_df.height
         end_time = time.time()

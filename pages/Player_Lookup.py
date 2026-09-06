@@ -34,13 +34,9 @@ st.sidebar.header("Settings")
 
 key_prefix = 'Player_Lookup'
 
-dataPath = bridgestatslib.resolve_data_path()
-
 with st.spinner(text="Reading data ..."):
     start_time = time.time()
-    acbl_player_name_dict_filename = 'acbl_player_info.parquet'
-    acbl_player_name_dict_file = dataPath.joinpath(acbl_player_name_dict_filename)
-    acbl_player_df = bridgestatslib.load_player_info_df(acbl_player_name_dict_file)
+    acbl_player_df = bridgestatslib.load_player_info_df()
     end_time = time.time()
     st.caption(f"Data read completed in {round(end_time-start_time,2)} seconds. {acbl_player_df.height} rows read.")
 

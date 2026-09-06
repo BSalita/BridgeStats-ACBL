@@ -2,7 +2,7 @@
 import bridgestats
 
 if __name__ == '__main__':
-    chart_options = ['Declarer_ParScore','ContractType','Declarer_Pct','Declarer_DD_Tricks','Declarer_DD_Score','Declarer_DD_Pct','Declarer_Tricks_DD_Diff','Declarer_Score_DD_Diff','Declarer_ParScore_DD_Diff']
+    chart_options = ['ParScore','ContractType','Declarer_Pct','DD_Tricks','DD_Score_Declarer','MP_DD_Pct_Declarer','Tricks_DD_Diff','Score_Declarer_DD_Diff','ParScore_DD_Diff']
     club_or_tournament = 'tournament'
     pair_or_player = 'pair'
     groupby = ['Declarer_Pair','Declarer','Dummy']

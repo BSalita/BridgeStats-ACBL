@@ -5,8 +5,9 @@ import unittest
 
 import polars as pl
 
-from bridgestats import apply_filters
+from bridgestats import apply_filters, create_query
 from handstats import apply_regex_filter
+import bridgestatslib
 
 
 def _board_results_df() -> pl.DataFrame:
@@ -64,20 +65,74 @@ class FilterTests(unittest.TestCase):
         )
         self.assertEqual(df.height, 0)
 
-    def test_apply_regex_filter_matches_board_record(self) -> None:
-        df = pl.DataFrame(
-            {
-                "board_record_string": ["SAKQxxx", "HAKxxx", "SAKQxxx"],
-            }
-        )
+    def test_apply_regex_filter_matches_pbn(self) -> None:
+        df = pl.DataFrame({"PBN": ["SAKQxxx", "HAKxxx", "SAKQxxx"]})
         filtered = apply_regex_filter(df, r"^SAK", sample_size=100000)
         self.assertEqual(filtered.height, 2)
-        self.assertTrue(all(s.startswith("SAK") for s in filtered["board_record_string"]))
+        self.assertTrue(all(s.startswith("SAK") for s in filtered["PBN"]))
 
     def test_apply_regex_filter_samples_when_over_limit(self) -> None:
-        df = pl.DataFrame({"board_record_string": [f"S{i:04d}" for i in range(20)]})
+        df = pl.DataFrame({"PBN": [f"S{i:04d}" for i in range(20)]})
         filtered = apply_regex_filter(df, "", sample_size=5)
         self.assertEqual(filtered.height, 5)
+
+    def test_create_query_uses_current_player_id_columns(self) -> None:
+        query = create_query(
+            "board_results",
+            "",
+            "",
+            0,
+            "Score_Declarer,PBN,session_id",
+            ["108571"],
+            ["2663279"],
+            ["2663279_9524304"],
+            0,
+            "Declarer_Pct",
+            0,
+            9999999,
+            "2019-01-01",
+            "2022-12-31",
+        )
+        self.assertIn("Player_ID_N", query)
+        self.assertIn("Player_ID_E", query)
+        self.assertIn("Score_Declarer", query)
+        self.assertIn("session_id", query)
+        self.assertNotIn("Player_Number_", query)
+        self.assertNotIn("board_record_string", query)
+        self.assertNotIn("Declarer_Score", query)
+
+    def test_normalize_board_results_uses_current_names(self) -> None:
+        df = pl.DataFrame(
+            {
+                "session_id": ["s1"],
+                "Declarer_Direction": ["N"],
+                "Player_ID_N": ["1"],
+                "Player_ID_E": ["2"],
+                "Player_ID_S": ["3"],
+                "Player_ID_W": ["4"],
+                "Dummy": ["3"],
+                "OnLead": ["2"],
+                "NotOnLead": ["4"],
+                "Tricks": [10],
+                "DD_Tricks": [9],
+                "Score_Declarer": [420],
+                "DD_Score_Declarer": [400],
+                "ParScore": [430],
+                "EV_Score_Declarer": [410],
+                "EV_Max_Declarer": [450],
+                "MP_EV_Pct_Declarer": [0.6],
+                "MP_EV_Max_Pct_Declarer": [0.7],
+                "MP_Par_Pct_Declarer": [0.55],
+                "Declarer_Pct": [0.5],
+            }
+        )
+        out = bridgestatslib.normalize_board_results(df)
+        self.assertIn("Declarer", out.columns)
+        self.assertEqual(out["Declarer"][0], "1")
+        self.assertEqual(out["Tricks_DD_Diff"][0], 1)
+        self.assertEqual(out["Score_Declarer_DD_Diff"][0], 20)
+        self.assertNotIn("Declarer_Score", out.columns)
+        self.assertNotIn("Session", out.columns)
 
 
 if __name__ == "__main__":

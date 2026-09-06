@@ -73,12 +73,25 @@ def Stats(club_or_tournament, pair_or_player, chart_options, groupby):
         st.error(f'dataPath does not exist: {st.session_state.dataPath}')
 
     with st.spinner(text="Reading player data ..."):
-        acbl_player_d = bridgestatslib.load_player_name_dict()
+        try:
+            acbl_player_d = bridgestatslib.load_player_name_dict()
+        except FileNotFoundError as exc:
+            st.error(str(exc))
+            st.stop()
 
-    acbl_board_results_augmented_file = bridgestatslib.resolve_data_file(
-        f"acbl_{club_or_tournament}_board_results_augmented.parquet",
-        required_columns=('session_id', 'PBN', 'Score_Declarer', 'Player_ID_N'),
-    )
+    try:
+        acbl_board_results_augmented_file = bridgestatslib.resolve_data_file(
+            f"acbl_{club_or_tournament}_board_results_augmented.parquet",
+            required_columns=('session_id', 'PBN', 'Score_Declarer', 'Player_ID_N'),
+        )
+    except FileNotFoundError as exc:
+        st.error(
+            f"Current {club_or_tournament} board-results parquet is not mounted. "
+            "Bind-mount E:\\bridge\\data\\acbl (or acbl-pipeline/club_results_parquet) "
+            "as /app/extra-data via bridgestats_start.ps1. "
+            f"{exc}"
+        )
+        st.stop()
 
     # todo: implement verification of club numbers by looking them up in dict? At least check for 6 digits.
     # 108571 is Fort Lauderdale, 267096 is Fort Lauderdale Quick Tricks, 204891 Hilton Head

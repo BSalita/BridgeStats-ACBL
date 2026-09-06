@@ -58,12 +58,14 @@ def data_search_roots():
         if env:
             roots.append(pathlib.Path(env))
     roots.append(pathlib.Path(__file__).resolve().parent / 'data')
-    e_acbl = pathlib.Path('e:/bridge/data/acbl')
-    if e_acbl.exists():
-        roots.append(e_acbl)
-    pipeline = pathlib.Path(__file__).resolve().parent.parent / 'acbl-pipeline' / 'club_results_parquet'
-    if pipeline.exists():
-        roots.append(pipeline)
+    for extra in (
+        pathlib.Path('/app/extra-data'),
+        pathlib.Path('/data/_wslc_host/acbl-stage/club_results_parquet'),
+        pathlib.Path('e:/bridge/data/acbl'),
+        pathlib.Path(__file__).resolve().parent.parent / 'acbl-pipeline' / 'club_results_parquet',
+    ):
+        if extra.exists():
+            roots.append(extra)
     seen = set()
     unique = []
     for root in roots:

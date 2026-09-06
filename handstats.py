@@ -49,10 +49,14 @@ def Stats(club_or_tournament, pair_or_player, chart_options, groupby):
 
     key_prefix = club_or_tournament # pair_or_player isn't used here
 
-    acbl_hand_records_augmented_file = bridgestatslib.resolve_data_file(
-        f"acbl_{club_or_tournament}_hand_records_augmented_narrow.parquet",
-        required_columns=('PBN', 'game_date'),
-    )
+    try:
+        acbl_hand_records_augmented_file = bridgestatslib.resolve_data_file(
+            f"acbl_{club_or_tournament}_hand_records_augmented_narrow.parquet",
+            required_columns=('PBN', 'game_date'),
+        )
+    except FileNotFoundError as exc:
+        st.error(str(exc))
+        st.stop()
 
     # tournament data is as early as 2013? club data as early as 2019?
     start_date = st.sidebar.text_input('Enter start date:', value='2000-01-01', key=key_prefix+'_HandRecord-Start_Date', help='Enter starting date in YYYY-MM-DD format. Earliest year is 2019')

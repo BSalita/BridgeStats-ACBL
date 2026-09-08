@@ -10,6 +10,7 @@ ROOT = pathlib.Path(__file__).resolve().parent
 STREAMLIT_FILES = (
     ROOT / "bridgestats.py",
     ROOT / "handstats.py",
+    ROOT / "player_sidebar.py",
     ROOT / "bridgestats_charts.py",
     ROOT / "Home.py",
     ROOT / "pages" / "Club_Lookup.py",
@@ -31,6 +32,7 @@ FORBIDDEN_MODULES = {
 CLIENT_FILES = {
     "bridgestats.py",
     "handstats.py",
+    "player_sidebar.py",
     "Club_Lookup.py",
     "Player_Lookup.py",
 }

@@ -24,6 +24,7 @@ import streamlitlib  # must be placed after sys.path.append. vscode re-format li
 
 import bridgestats_api_client as api
 from bridgestats_charts import render_chart_payloads
+import player_sidebar
 
 
 def Stats(club_or_tournament, pair_or_player, chart_options, groupby):
@@ -34,6 +35,12 @@ def Stats(club_or_tournament, pair_or_player, chart_options, groupby):
     st.sidebar.header("Settings for Hand Record Statistics")
 
     key_prefix = club_or_tournament
+    name_filter, number_filter = player_sidebar.sidebar_player_filters(key_prefix)
+    players = player_sidebar.resolve_player_ids(
+        name_filter,
+        player_sidebar.parse_player_numbers(number_filter),
+        key_prefix=key_prefix,
+    )
     start_date = st.sidebar.text_input(
         "Enter start date:",
         value="2000-01-01",
@@ -89,6 +96,7 @@ def Stats(club_or_tournament, pair_or_player, chart_options, groupby):
                 sample_size=sample_size,
                 table_limit=table_display_limit,
                 selected_charts=selected_charts,
+                players=players,
             )
         except api.BridgeStatsApiClientError as exc:
             st.error(str(exc))

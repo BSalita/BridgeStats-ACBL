@@ -26,6 +26,7 @@ import streamlitlib  # must be placed after sys.path.append. vscode re-format li
 
 import bridgestats_api_client as api
 from bridgestats_charts import render_chart_payloads
+import player_sidebar
 
 
 def Stats(club_or_tournament, pair_or_player, chart_options, groupby):
@@ -58,30 +59,17 @@ def Stats(club_or_tournament, pair_or_player, chart_options, groupby):
     else:
         clubs = []
 
-    if pair_or_player == "player":
-        players = st.sidebar.text_input(
-            "Player ACBL Numbers - Restrict results to these 7 digit ACBL player numbers (empty means all). Examples: 2663279 9524304 6941303 6941346",
-            placeholder="Enter player numbers",
-            value="2663279 9524304 6941303 6941346",
-            key=key_prefix + "-Players",
-            help="Enter zero or more ACBL player numbers. Use Player Lookup, in above list, to find a player number. Examples: 2663279 9524304 6941303 6941346",
-        )
-        players = players.replace(",", " ").replace("_", " ").split()
-        players = [] if players == [""] else players
-        for player in players:
-            if not re.match(r"^\d{7}$", player):
-                st.warning(
-                    f"Player {player} has invalid syntax. Expecting one or more valid seven digit ACBL player numbers. Please correct."
-                )
-                st.stop()
-    else:
-        players = []
+    name_filter, number_filter = player_sidebar.sidebar_player_filters(key_prefix)
+    players = player_sidebar.parse_player_numbers(number_filter)
+    players = player_sidebar.resolve_player_ids(
+        name_filter, players, clubs, key_prefix=key_prefix
+    )
 
     if pair_or_player == "pair":
         pairs = st.sidebar.text_input(
             "Pair ACBL Numbers - Restrict results to these pairs. Use two 7 digit ACBL player numbers separated by an underscore (empty means all). Examples: 2663279_9524304  6941303_6941346",
             placeholder="Enter Pair Numbers",
-            value="2663279_9524304 6941303_6941346",
+            value="",
             key=key_prefix + "-Pairs",
         )
         pairs = pairs.replace(",", " ").split()

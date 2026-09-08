@@ -193,6 +193,9 @@ def hand_records_report(
     sample_size: int = 100000,
     table_limit: int = 100,
     selected_charts: Optional[Sequence[str]] = None,
+    clubs: Optional[Sequence[str]] = None,
+    players: Optional[Sequence[str]] = None,
+    pairs: Optional[Sequence[str]] = None,
 ) -> Dict[str, Any]:
     return _request(
         "POST",
@@ -205,6 +208,9 @@ def hand_records_report(
             "sample_size": sample_size,
             "table_limit": table_limit,
             "selected_charts": list(selected_charts or []),
+            "clubs": list(clubs or []),
+            "players": list(players or []),
+            "pairs": list(pairs or []),
         },
     )
 

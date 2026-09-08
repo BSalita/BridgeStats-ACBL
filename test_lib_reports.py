@@ -86,6 +86,40 @@ class ReportLibTests(unittest.TestCase):
         self.assertEqual(back.height, 121)
         self.assertEqual(back["club_enrolled"][-1], "2018-12-29")
 
+    def test_fuzzy_player_name_and_exact_number_filters(self) -> None:
+        df = pl.DataFrame(
+            {
+                "acbl_number": ["2663279", "9524304", "1111111"],
+                "first_name": ["Robert", "Kerry", "Jean"],
+                "last_name": ["Salita", "Flom", "Balleroy"],
+            }
+        )
+        by_last = lib.filter_players_by_name(df, "salita")
+        self.assertEqual(by_last["acbl_number"].to_list(), ["2663279"])
+        by_first = lib.filter_players_by_name(df, "robert")
+        self.assertEqual(by_first["acbl_number"].to_list(), ["2663279"])
+        by_typo = lib.filter_players_by_name(df, "salitta")
+        self.assertEqual(by_typo["acbl_number"].to_list(), ["2663279"])
+        by_or = lib.filter_players_by_name(df, "salita, flom")
+        self.assertEqual(sorted(by_or["acbl_number"].to_list()), ["2663279", "9524304"])
+        short = lib.filter_players_by_name(df, "al")
+        self.assertEqual(short.height, 0)
+        exact = lib.filter_players_by_number(df, "2663279", "acbl_number")
+        self.assertEqual(exact["acbl_number"].to_list(), ["2663279"])
+        partial = lib.filter_players_by_number(df, "2663", "acbl_number")
+        self.assertEqual(partial.height, 0)
+        ranked = lib.filter_players_by_name(
+            pl.DataFrame(
+                {
+                    "acbl_number": ["1", "2", "3"],
+                    "first_name": ["Marie", "Robert", "Jean"],
+                    "last_name": ["Salitas", "Salita", "Balleroy"],
+                }
+            ),
+            "salita",
+        )
+        self.assertEqual(ranked["acbl_number"].to_list(), ["2", "1"])
+
     def test_tournament_probe_excludes_optional_club(self) -> None:
         _filename, required, optional = lib.SOURCE_FILES["tournament_board_results"]
         probe = lib.source_probe_columns(required, optional)

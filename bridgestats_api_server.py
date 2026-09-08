@@ -55,6 +55,9 @@ class HandRecordsRequest(BaseModel):
     sample_size: int = 100000
     table_limit: int = 100
     selected_charts: List[str] = Field(default_factory=list)
+    clubs: List[str] = Field(default_factory=list)
+    players: List[str] = Field(default_factory=list)
+    pairs: List[str] = Field(default_factory=list)
 
 
 def _run(callable_, /, *args, **kwargs):
@@ -192,6 +195,9 @@ def hand_records(request: HandRecordsRequest) -> dict:
         sample_size=request.sample_size,
         table_limit=request.table_limit,
         selected_charts=request.selected_charts,
+        clubs=request.clubs,
+        players=request.players,
+        pairs=request.pairs,
     )
 
 

@@ -11,6 +11,8 @@ import math
 import os
 import pathlib
 import re
+import unicodedata
+from difflib import SequenceMatcher
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import duckdb
@@ -25,6 +27,8 @@ MAX_TABLE_ROWS = 500
 MAX_LOOKUP_ROWS = 2000
 MAX_CHART_BINS = 100
 CON_REGISTER_NAME = "self"
+FUZZY_NAME_THRESHOLD = 0.72
+MIN_FUZZY_SUBSTRING_LEN = 3
 
 BOARD_RESULT_COLUMNS = (
     "Club",
@@ -1103,6 +1107,122 @@ def run_sql(sql: str, source: str, limit: int = DEFAULT_SQL_ROW_LIMIT) -> Dict[s
     return table
 
 
+def normalize_fuzzy_text(value: object) -> str:
+    """Normalize accents, punctuation, whitespace, and case for fuzzy search."""
+    text = unicodedata.normalize("NFKD", str(value or ""))
+    text = "".join(character for character in text if not unicodedata.combining(character))
+    return re.sub(r"[^a-z0-9]+", " ", text.casefold()).strip()
+
+
+def fuzzy_text_score(candidate: object, query: object) -> float:
+    """Score a free-text candidate, preserving substring matches as exact."""
+    haystack = normalize_fuzzy_text(candidate)
+    needle = normalize_fuzzy_text(query)
+    if not haystack or not needle:
+        return 0.0
+    if needle in haystack:
+        return 1.0
+    scores = [SequenceMatcher(None, needle, haystack).ratio()]
+    candidate_tokens = haystack.split()
+    query_word_count = max(1, len(needle.split()))
+    for start in range(len(candidate_tokens)):
+        window = " ".join(candidate_tokens[start : start + query_word_count])
+        scores.append(SequenceMatcher(None, needle, window).ratio())
+    return max(scores)
+
+
+def _name_query_matches(candidate: object, query: object) -> bool:
+    haystack = normalize_fuzzy_text(candidate)
+    needle = normalize_fuzzy_text(query)
+    if not haystack or not needle:
+        return False
+    if len(needle) < MIN_FUZZY_SUBSTRING_LEN:
+        return needle in haystack.split() or haystack == needle
+    return fuzzy_text_score(candidate, query) >= FUZZY_NAME_THRESHOLD
+
+
+def _name_rank(display: object, last: object, query: object) -> tuple[float, int, int]:
+    """Higher is better: fuzzy score, exact last name, last-name prefix."""
+    needle = normalize_fuzzy_text(query)
+    last_n = normalize_fuzzy_text(last)
+    return (
+        fuzzy_text_score(display, query),
+        1 if last_n == needle else 0,
+        1 if needle and last_n.startswith(needle) else 0,
+    )
+
+
+def filter_players_by_name(df: pl.DataFrame, names: Optional[str]) -> pl.DataFrame:
+    """Elo-style fuzzy match on first+last name. Comma/semicolon separates OR queries.
+
+    Matches are sorted best-first (score, exact last name, last-name prefix).
+    """
+    raw = (names or "").strip()
+    if not raw or df.is_empty():
+        return df
+    queries = [part.strip() for part in re.split(r"[,;]", raw) if part.strip()]
+    if not queries:
+        return df
+    work = df
+    has_first = "first_name" in work.columns
+    has_last = "last_name" in work.columns
+    if not has_first and not has_last:
+        return df
+    first = (
+        pl.col("first_name").cast(pl.Utf8).fill_null("") if has_first else pl.lit("")
+    )
+    last = pl.col("last_name").cast(pl.Utf8).fill_null("") if has_last else pl.lit("")
+    work = work.with_columns((first + " " + last).str.strip_chars().alias("_display_name"))
+    values = (
+        work.select(pl.col("_display_name").drop_nulls().unique())
+        .to_series()
+        .to_list()
+    )
+    matched = [
+        value
+        for value in values
+        if any(_name_query_matches(value, query) for query in queries)
+    ]
+    work = work.filter(pl.col("_display_name").is_in(matched))
+    if work.is_empty():
+        return work.drop("_display_name")
+    last_values = (
+        work["last_name"].cast(pl.Utf8).fill_null("").to_list()
+        if has_last
+        else [""] * work.height
+    )
+    ranks = [
+        max(_name_rank(display, last_name, query) for query in queries)
+        for display, last_name in zip(work["_display_name"].to_list(), last_values)
+    ]
+    work = (
+        work.with_columns(
+            [
+                pl.Series("_name_score", [rank[0] for rank in ranks]),
+                pl.Series("_exact_last", [rank[1] for rank in ranks]),
+                pl.Series("_prefix_last", [rank[2] for rank in ranks]),
+            ]
+        )
+        .sort(
+            ["_name_score", "_exact_last", "_prefix_last", "last_name", "first_name"]
+            if has_first
+            else ["_name_score", "_exact_last", "_prefix_last", "last_name"],
+            descending=[True, True, True, False, False] if has_first else [True, True, True, False],
+        )
+        .drop("_display_name", "_name_score", "_exact_last", "_prefix_last")
+    )
+    return work
+
+
+def filter_players_by_number(
+    df: pl.DataFrame, numbers: Optional[str], id_col: str
+) -> pl.DataFrame:
+    tokens = [token for token in (numbers or "").replace(",", " ").split() if token]
+    if not tokens or df.is_empty() or id_col not in df.columns:
+        return df
+    return df.filter(pl.col(id_col).cast(pl.Utf8).is_in(tokens))
+
+
 def player_lookup(
     clubs: Optional[str] = None,
     numbers: Optional[str] = None,
@@ -1117,14 +1237,10 @@ def player_lookup(
     if "mp_total" in df.columns:
         df = df.with_columns(pl.col("mp_total").cast(pl.Float64))
     clubs_regex = "|".join((clubs or "").replace(",", " ").split())
-    numbers_regex = "|".join((numbers or "").replace(",", " ").split())
-    names_regex = "|".join((names or "").split())
     if clubs_regex and "club" in df.columns:
         df = df.filter(pl.col("club").str.contains(clubs_regex))
-    if numbers_regex:
-        df = df.filter(pl.col("acbl_number").str.contains(numbers_regex))
-    if names_regex and "last_name" in df.columns:
-        df = df.filter(pl.col("last_name").str.contains(names_regex, ignore_case=True))
+    df = filter_players_by_number(df, numbers, "acbl_number")
+    df = filter_players_by_name(df, names)
     drop_mp = [col for col in df.columns if col.startswith("mp_")]
     if drop_mp:
         df = df.drop(drop_mp)
@@ -1292,6 +1408,43 @@ def head_to_head(
     }
 
 
+def _hand_records_for_players(
+    df: pl.DataFrame,
+    club_or_tournament: str,
+    clubs: Sequence[str],
+    players: Sequence[str],
+    pairs: Sequence[str],
+    start_date: Optional[str],
+    end_date: Optional[str],
+) -> pl.DataFrame:
+    if not players and not pairs:
+        return df
+    unknown = unknown_players(
+        list(players) + [part for pair in pairs for part in str(pair).split("_")]
+    )
+    if unknown:
+        raise ValueError("Unknown player(s): " + ", ".join(unknown))
+    boards = load_board_results(
+        resolve_source_path(board_results_source(club_or_tournament)),
+        clubs=tuple(clubs),
+        players=tuple(players),
+        pairs=tuple(pairs),
+        start_date=start_date,
+        end_date=end_date,
+    )
+    if boards.height == 0:
+        raise ValueError("No boards found for the selected player filters.")
+    if "PBN" in df.columns and "PBN" in boards.columns:
+        keys = boards.select(pl.col("PBN").cast(pl.Utf8)).drop_nulls().unique()
+        return df.with_columns(pl.col("PBN").cast(pl.Utf8)).join(keys, on="PBN", how="inner")
+    if "session_id" in df.columns and "session_id" in boards.columns:
+        keys = boards.select(pl.col("session_id").cast(pl.Utf8)).drop_nulls().unique()
+        return df.with_columns(pl.col("session_id").cast(pl.Utf8)).join(
+            keys, on="session_id", how="inner"
+        )
+    raise ValueError("Hand records cannot be filtered by player without PBN or session_id.")
+
+
 def hand_records_report(
     club_or_tournament: str,
     start_date: Optional[str] = None,
@@ -1300,11 +1453,17 @@ def hand_records_report(
     sample_size: int = 100000,
     table_limit: int = 100,
     selected_charts: Optional[Sequence[str]] = None,
+    clubs: Sequence[str] = (),
+    players: Sequence[str] = (),
+    pairs: Sequence[str] = (),
 ) -> Dict[str, Any]:
     source = hand_records_source(club_or_tournament)
     path = resolve_source_path(source)
     df = load_hand_records(path)
     source_count = df.height
+    df = _hand_records_for_players(
+        df, club_or_tournament, clubs, players, pairs, start_date, end_date
+    )
     df = apply_regex_filter(df, brs_regex, sample_size)
     if "PBN" in df.columns:
         df = df.unique(subset=["PBN"])

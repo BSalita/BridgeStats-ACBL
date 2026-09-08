@@ -16,13 +16,14 @@ _streamlit = next(
 )
 if _streamlit is None:
     raise FileNotFoundError(f"streamlitlib not found under {_APP_DIR} or {_SRC_DIR}")
-for _p in (_SRC_DIR, _streamlit):
+for _p in (_APP_DIR, _SRC_DIR, _streamlit):
     _s = str(_p)
     if _s not in sys.path:
         sys.path.append(_s)
 import streamlitlib  # must be placed after sys.path.append. vscode re-format likes to move this to the top
 
 import bridgestats_api_client as api
+import player_sidebar
 
 st.header("Lookup Player Information")
 st.sidebar.header("Settings for Player Lookup")
@@ -35,16 +36,7 @@ clubs = st.sidebar.text_input(
     key=key_prefix + "-Club",
     help="Example: 108571 (Fort Lauderdale Bridge Club",
 )
-player_numbers = st.sidebar.text_input(
-    "Narrow search to these ACBL player numbers. Enter one or more 7 digit numbers (empty means all):",
-    placeholder="Enter list of ACBL numbers",
-    key=key_prefix + "-ACBL_number",
-)
-player_names = st.sidebar.text_input(
-    "Narrow search to these last names. Enter one or more last names (empty means all):",
-    placeholder="Enter list of last names",
-    key=key_prefix + "-Last_Name",
-)
+player_names, player_numbers = player_sidebar.sidebar_player_filters(key_prefix)
 
 with st.spinner(text="Reading data ..."):
     start_time = time.time()

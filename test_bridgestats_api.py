@@ -122,6 +122,29 @@ class BridgeStatsApiTests(unittest.TestCase):
         self.assertGreaterEqual(body["selected_count"], 1)
         self.assertTrue(body["player_boards"])
 
+    def test_player_lookup_fuzzy_name_and_exact_number(self) -> None:
+        by_name = self.client.get(
+            "/acbl-stats/players/lookup",
+            params={"names": "salitta", "limit": 10},
+        )
+        self.assertEqual(by_name.status_code, 200, by_name.text)
+        ids = [row["acbl_number"] for row in by_name.json()["rows"]]
+        self.assertEqual(ids, ["2663279"])
+        by_number = self.client.get(
+            "/acbl-stats/players/lookup",
+            params={"numbers": "2663279", "limit": 10},
+        )
+        self.assertEqual(by_number.status_code, 200, by_number.text)
+        self.assertEqual(
+            [row["acbl_number"] for row in by_number.json()["rows"]], ["2663279"]
+        )
+        partial = self.client.get(
+            "/acbl-stats/players/lookup",
+            params={"numbers": "2663", "limit": 10},
+        )
+        self.assertEqual(partial.status_code, 200, partial.text)
+        self.assertEqual(partial.json()["total"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

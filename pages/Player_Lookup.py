@@ -25,6 +25,7 @@ import streamlitlib  # must be placed after sys.path.append. vscode re-format li
 import bridgestats_api_client as api
 import player_sidebar
 
+st.set_page_config(layout="wide", initial_sidebar_state="expanded")
 st.header("Lookup Player Information")
 st.sidebar.header("Settings for Player Lookup")
 st.sidebar.header("Settings")

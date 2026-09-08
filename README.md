@@ -1,6 +1,6 @@
-# BridgeStats
+# BridgeStats-ACBL
 
-This project contains source code for https://7nt.info, a website which displays ACBL bridge statistics. 
+This project contains source code for https://7nt.info, a website which displays ACBL bridge statistics. GitHub repository: https://github.com/BSalita/BridgeStats-ACBL 
 
 The website server requires at least 64GB of memory.
 

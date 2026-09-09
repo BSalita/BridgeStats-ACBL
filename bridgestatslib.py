@@ -1,6 +1,6 @@
 ﻿"""Headless BridgeStats library: parquet discovery, filters, reports, DuckDB SQL.
 
-Streamlit and MortyBridgeBot must not import this module. Only the FastAPI
+Streamlit and MortyBridgeMCP must not import this module. Only the FastAPI
 server imports it.
 """
 

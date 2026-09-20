@@ -1,8 +1,7 @@
-"""Build datetime captions used at the top of every Streamlit page."""
+"""Build datetime caption at the top of the sidebar on every Streamlit page."""
 
 from __future__ import annotations
 
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -20,10 +19,4 @@ def app_datetime() -> str:
 
 
 def show_app_datetime() -> None:
-    stamp = app_datetime()
-    st.caption(
-        f"App:{stamp} Streamlit:{st.__version__} "
-        f"Query Params:{st.query_params.to_dict()} "
-        f"Environment:{os.getenv('STREAMLIT_ENV', '')}"
-    )
-    st.sidebar.caption(f"Build:{stamp}")
+    st.sidebar.caption(f"Build:{app_datetime()}")

@@ -15,15 +15,17 @@ _streamlit = next(
 )
 if _streamlit is None:
     raise FileNotFoundError(f"streamlitlib not found under {_APP_DIR} or {_SRC_DIR}")
-for _p in (_SRC_DIR, _streamlit):
+for _p in (_APP_DIR, _SRC_DIR, _streamlit):
     _s = str(_p)
     if _s not in sys.path:
         sys.path.append(_s)
 import streamlitlib  # must be placed after sys.path.append. vscode re-format likes to move this to the top
 
+import app_info
 import bridgestats_api_client as api
 
 st.set_page_config(layout="wide", initial_sidebar_state="expanded")
+app_info.show_app_datetime()
 st.header("Lookup Club Information")
 st.sidebar.header("Settings for Club Lookup")
 st.sidebar.header("Settings")

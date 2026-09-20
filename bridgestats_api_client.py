@@ -72,11 +72,49 @@ def schema(source: str, pattern: Optional[str] = None, limit: int = 200) -> Dict
     )
 
 
-def sql(sql: str, source: str = "club_board_results", limit: int = 500) -> Dict[str, Any]:
+def sql(
+    sql: str,
+    source: str = "club_board_results",
+    limit: int = 500,
+    meta: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     return _request(
         "POST",
         "/acbl-stats/sql",
-        json={"sql": sql, "source": source, "limit": limit},
+        json={"sql": sql, "source": source, "limit": limit, "meta": meta},
+    )
+
+
+def favorites(favorite_id: Optional[str] = None) -> Dict[str, Any]:
+    return _request("GET", "/acbl-stats/favorites", {"id": favorite_id})
+
+
+def run_favorite(
+    favorite_id: str,
+    source: Optional[str] = None,
+    meta: Optional[Dict[str, Any]] = None,
+    limit: int = 500,
+    club_or_tournament: Optional[str] = None,
+    clubs: Optional[Sequence[str]] = None,
+    players: Optional[Sequence[str]] = None,
+    pairs: Optional[Sequence[str]] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+) -> Dict[str, Any]:
+    return _request(
+        "POST",
+        f"/acbl-stats/favorites/{favorite_id}",
+        json={
+            "source": source,
+            "meta": meta or {},
+            "limit": limit,
+            "club_or_tournament": club_or_tournament,
+            "clubs": list(clubs or []),
+            "players": list(players or []),
+            "pairs": list(pairs or []),
+            "start_date": start_date,
+            "end_date": end_date,
+        },
     )
 
 

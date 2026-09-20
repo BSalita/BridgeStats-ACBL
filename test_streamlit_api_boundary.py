@@ -8,6 +8,7 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parent
 STREAMLIT_FILES = (
+    ROOT / "app_info.py",
     ROOT / "bridgestats.py",
     ROOT / "handstats.py",
     ROOT / "player_sidebar.py",
@@ -58,6 +59,17 @@ class StreamlitApiBoundaryTests(unittest.TestCase):
                 )
                 if path.name in CLIENT_FILES:
                     self.assertIn("bridgestats_api_client", modules)
+
+    def test_pages_show_app_datetime(self) -> None:
+        for path in (
+            ROOT / "Home.py",
+            ROOT / "bridgestats.py",
+            ROOT / "handstats.py",
+            ROOT / "pages" / "Club_Lookup.py",
+            ROOT / "pages" / "Player_Lookup.py",
+        ):
+            with self.subTest(file=path.name):
+                self.assertIn("show_app_datetime()", path.read_text(encoding="utf-8-sig"))
 
 
 if __name__ == "__main__":

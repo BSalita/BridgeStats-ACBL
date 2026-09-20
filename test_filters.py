@@ -5,7 +5,7 @@ import unittest
 
 import polars as pl
 
-from bridgestatslib import apply_filters, apply_regex_filter, create_query
+from bridgestatslib import apply_filters, apply_regex_filter, build_report_meta
 import bridgestatslib
 
 
@@ -75,30 +75,19 @@ class FilterTests(unittest.TestCase):
         filtered = apply_regex_filter(df, "", sample_size=5)
         self.assertEqual(filtered.height, 5)
 
-    def test_create_query_uses_current_player_id_columns(self) -> None:
-        query = create_query(
-            "board_results",
-            "",
-            "",
-            0,
-            "Score_Declarer,PBN,session_id",
-            ["108571"],
-            ["2663279"],
-            ["2663279_9524304"],
-            0,
-            "Declarer_Pct",
-            0,
-            9999999,
-            "2019-01-01",
-            "2022-12-31",
+    def test_report_meta_uses_current_player_id_columns(self) -> None:
+        meta = build_report_meta(
+            clubs=["108571"],
+            players=["2663279"],
+            pairs=["2663279_9524304"],
+            start_date="2019-01-01",
+            end_date="2022-12-31",
         )
-        self.assertIn("Player_ID_N", query)
-        self.assertIn("Player_ID_E", query)
-        self.assertIn("Score_Declarer", query)
-        self.assertIn("session_id", query)
-        self.assertNotIn("Player_Number_", query)
-        self.assertNotIn("board_record_string", query)
-        self.assertNotIn("Declarer_Score", query)
+        self.assertIn("Player_ID_N", meta["Player_Filter"])
+        self.assertIn("Player_ID_E", meta["Player_Filter"])
+        self.assertIn("2663279", meta["Players"])
+        self.assertIn("Date BETWEEN", meta["Date_Filter"])
+        self.assertNotIn("Player_Number_", meta["Player_Filter"])
 
     def test_normalize_board_results_uses_current_names(self) -> None:
         df = pl.DataFrame(

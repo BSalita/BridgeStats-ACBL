@@ -17,9 +17,17 @@ def _selected_df() -> pl.DataFrame:
             "Declarer": ["2663279", "9524304"],
             "Declarer_Name": ["Robert", "Kerry"],
             "Dummy": ["9524304", "2663279"],
+            "OnLead": ["1111111", "2222222"],
+            "NotOnLead": ["3333333", "4444444"],
             "Declarer_Pair": ["2663279_9524304", "9524304_2663279"],
             "Declarer_Pct": [0.6, 0.4],
             "Score_Declarer": [420, -50],
+            "DD_Score_Declarer": [400, 400],
+            "EV_Score_Declarer": [410, 390],
+            "EV_Max_Declarer": [450, 450],
+            "MP_Par_Pct_Declarer": [0.5, 0.5],
+            "MP_EV_Pct_Declarer": [0.55, 0.45],
+            "MP_EV_Max_Pct_Declarer": [0.7, 0.7],
             "Tricks": [10, 8],
             "DD_Tricks": [9, 9],
             "ParScore": [400, 400],
@@ -42,22 +50,59 @@ class ReportLibTests(unittest.TestCase):
         out = lib.dedupe_boards_by_pbn_declarer(df)
         self.assertEqual(out.height, 2)
 
-    def test_aggregate_by_declarer_and_session(self) -> None:
-        df = lib.add_board_scoring_columns(_selected_df())
+    def test_favorite_leaderboards(self) -> None:
+        df = lib.normalize_board_results(_selected_df())
+        df = lib.add_board_scoring_columns(df)
         df = lib.attach_pair_player_names(df, {"2663279": "Robert", "9524304": "Kerry"})
-        by_decl = lib.aggregate_by_declarer(df, "Declarer_Pct", min_declares=1, top_n=10)
+        meta = lib.build_report_meta(sort_column="Declarer_Pct", min_declares=1, top_n=10)
+        by_decl = lib.table_to_frame(lib.run_favorite("Declarer_Leaderboard", meta, df=df))
         self.assertEqual(by_decl.height, 2)
-        by_sess = lib.aggregate_by_session(df, "Declarer_Pct")
+        by_sess = lib.table_to_frame(lib.run_favorite("Session_Leaderboard", meta, df=df))
         self.assertEqual(by_sess.height, 1)
 
     def test_identical_boards_and_pair_h2h(self) -> None:
-        df = lib.add_board_scoring_columns(_selected_df())
+        df = lib.normalize_board_results(_selected_df())
+        df = lib.add_board_scoring_columns(df)
         df = lib.attach_pair_player_names(df)
         comparison = lib.identical_boards_comparison(df, "Declarer_Pct")
         self.assertEqual(comparison["n_boards"], 1)
         self.assertGreater(comparison["identical_boards"]["row_count"], 0)
         h2h = lib.pair_head_to_head(df, "Declarer_Pct")
         self.assertGreater(h2h.height, 0)
+
+    def test_process_sql_macros_pair_direction(self) -> None:
+        expanded = lib.process_sql_macros(
+            "SELECT Score_{Pair_Direction}, Pct_{Opponent_Pair_Direction} FROM self",
+            {"pair_direction": "NS", "opponent_pair_direction": "EW"},
+        )
+        self.assertEqual(expanded, "SELECT Score_NS, Pct_EW FROM self")
+        with self.assertRaises(ValueError):
+            lib.reject_unresolved_direction_macros(
+                lib.process_sql_macros("SELECT Score_{Pair_Direction} FROM self", {})
+            )
+
+    def test_list_favorites_includes_core_ids(self) -> None:
+        listed = lib.list_favorites()
+        ids = {item["id"] for item in listed["favorites"]}
+        self.assertTrue(
+            {
+                "Declarer_Leaderboard",
+                "Player_Position_Frequency",
+                "Pair_Head_To_Head",
+                "Hand_Records_Sample",
+            }.issubset(ids)
+        )
+        sql = lib.get_favorite("Declarer_Leaderboard")["statements"][0]["sql"]
+        self.assertIn("{Sort_Column}", sql)
+        self.assertNotIn("{Player_Direction}", sql)
+
+    def test_run_favorite_expands_default_sort_column(self) -> None:
+        df = lib.normalize_board_results(_selected_df())
+        df = lib.add_board_scoring_columns(df)
+        table = lib.run_favorite("Declarer_Leaderboard", {}, df=df)
+        self.assertNotIn("{Sort_Column}", table["sql"])
+        self.assertIn("Declarer_Pct", table["sql"])
+        self.assertGreater(table["row_count"], 0)
 
     def test_chart_series_bar_payload(self) -> None:
         df = lib.add_board_scoring_columns(_selected_df())

@@ -22,10 +22,12 @@ for _p in (_APP_DIR, _SRC_DIR, _streamlit):
         sys.path.append(_s)
 import streamlitlib  # must be placed after sys.path.append. vscode re-format likes to move this to the top
 
+import app_info
 import bridgestats_api_client as api
 import player_sidebar
 
 st.set_page_config(layout="wide", initial_sidebar_state="expanded")
+app_info.show_app_datetime()
 st.header("Lookup Player Information")
 st.sidebar.header("Settings for Player Lookup")
 st.sidebar.header("Settings")

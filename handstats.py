@@ -22,6 +22,7 @@ for _p in (_SRC_DIR, _streamlit):
         sys.path.append(_s)
 import streamlitlib  # must be placed after sys.path.append. vscode re-format likes to move this to the top
 
+import app_info
 import bridgestats_api_client as api
 from bridgestats_charts import render_chart_payloads
 import player_sidebar
@@ -30,6 +31,7 @@ import player_sidebar
 def Stats(club_or_tournament, pair_or_player, chart_options, groupby):
     st.set_page_config(layout="wide", initial_sidebar_state="expanded")
     streamlitlib.widen_scrollbars()
+    app_info.show_app_datetime()
 
     st.header(f"Hand Record Statistics for ACBL {club_or_tournament.capitalize()} Pair Games")
     st.sidebar.header("Settings for Hand Record Statistics")

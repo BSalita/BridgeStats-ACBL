@@ -2,7 +2,10 @@ import streamlit as st
 import pandas as pd
 # pd.options.mode.dtype_backend = 'pyarrow' # not yet fully implemented.
 
+import app_info
+
 st.set_page_config(layout="wide", initial_sidebar_state="expanded")
+app_info.show_app_datetime()
 
 st.header("Home Page of BridgeStats Project")
 st.subheader("To begin, click on one of the links on the left sidebar.")

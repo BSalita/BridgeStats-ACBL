@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import os
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
+import bridge_api_common as api_common
 import bridgestatslib as service
 
 API_BUILD_TAG = "2026-09-07-acbl-stats"
@@ -19,6 +20,19 @@ class SqlRequest(BaseModel):
     sql: str
     source: str = "club_board_results"
     limit: int = 500
+    meta: Optional[Dict[str, Any]] = None
+
+
+class FavoriteRunRequest(BaseModel):
+    source: Optional[str] = None
+    meta: Dict[str, Any] = Field(default_factory=dict)
+    limit: int = 500
+    club_or_tournament: Optional[str] = None
+    clubs: List[str] = Field(default_factory=list)
+    players: List[str] = Field(default_factory=list)
+    pairs: List[str] = Field(default_factory=list)
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
 
 
 class BoardResultsRequest(BaseModel):
@@ -70,13 +84,12 @@ def _run(callable_, /, *args, **kwargs):
 @app.get("/health")
 def health() -> dict:
     info = _run(service.dataset_info)
-    return {
-        "status": "ok",
-        "service": "acbl-stats-api",
-        "api_version": app.version,
-        "build_tag": API_BUILD_TAG,
-        **info,
-    }
+    return api_common.health_payload(
+        info,
+        service="acbl-stats-api",
+        api_version=app.version,
+        build_tag=API_BUILD_TAG,
+    )
 
 
 @app.get("/acbl-stats/dataset-info")
@@ -95,7 +108,53 @@ def schema(
 
 @app.post("/acbl-stats/sql")
 def sql(request: SqlRequest) -> dict:
-    return _run(service.run_sql, request.sql, request.source, request.limit)
+    return _run(service.run_sql, request.sql, request.source, request.limit, meta=request.meta)
+
+
+@app.get("/acbl-stats/favorites")
+def favorites(id: Optional[str] = Query(None)) -> dict:
+    return _run(service.list_favorites, id)
+
+
+@app.post("/acbl-stats/favorites/{favorite_id}")
+def run_favorite(favorite_id: str, request: FavoriteRunRequest) -> dict:
+    meta = dict(request.meta or {})
+    built = service.build_report_meta(
+        clubs=request.clubs,
+        players=request.players,
+        pairs=request.pairs,
+        start_date=request.start_date,
+        end_date=request.end_date,
+        club_or_tournament=request.club_or_tournament or "club",
+        pair_direction=meta.get("pair_direction"),
+        opponent_pair_direction=meta.get("opponent_pair_direction"),
+        player_direction=meta.get("player_direction"),
+        partner_direction=meta.get("partner_direction"),
+        sort_column=str(meta.get("Sort_Column") or "Declarer_Pct"),
+        min_declares=int(meta.get("Min_Declares") or 0),
+        top_n=int(meta.get("Top_N") or request.limit),
+    )
+    built.update(meta)
+    frame = None
+    if request.club_or_tournament or request.clubs or request.players or request.pairs:
+        _source, _any_position, selected = _run(
+            service._prepare_board_frames,
+            request.club_or_tournament or "club",
+            request.clubs,
+            request.players,
+            request.pairs,
+            request.start_date,
+            request.end_date,
+        )
+        frame = selected
+    return _run(
+        service.run_favorite,
+        favorite_id,
+        built,
+        frame,
+        request.source,
+        request.limit,
+    )
 
 
 @app.get("/acbl-stats/players/lookup")

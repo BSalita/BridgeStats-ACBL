@@ -7,6 +7,7 @@ server imports it.
 from __future__ import annotations
 
 import datetime
+import json
 import math
 import os
 import pathlib
@@ -15,14 +16,15 @@ import unicodedata
 from difflib import SequenceMatcher
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
-import duckdb
 import polars as pl
+
+import bridge_api_common as api_common
 
 DATA_DIR_ENV = "BRIDGESTATS_DATA_DIR"
 EXTRA_DATA_DIR_ENV = "BRIDGESTATS_EXTRA_DATA_DIR"
 
-DEFAULT_SQL_ROW_LIMIT = 500
-MAX_SQL_ROW_LIMIT = 2000
+DEFAULT_SQL_ROW_LIMIT = api_common.DEFAULT_SQL_ROW_LIMIT
+MAX_SQL_ROW_LIMIT = api_common.MAX_SQL_ROW_LIMIT
 MAX_TABLE_ROWS = 500
 MAX_LOOKUP_ROWS = 2000
 MAX_CHART_BINS = 100
@@ -177,10 +179,40 @@ SOURCE_FILES: Dict[str, Tuple[str, Tuple[str, ...], Tuple[str, ...]]] = {
 BOARD_RESULT_SOURCES = ("club_board_results", "tournament_board_results")
 HAND_RECORD_SOURCES = ("club_hand_records", "tournament_hand_records")
 SQL_VIEW_NAMES = frozenset(SOURCE_FILES) | {CON_REGISTER_NAME}
-_SQL_FORBIDDEN = re.compile(
-    r"\b(COPY|INSTALL|LOAD|ATTACH|EXPORT|PRAGMA|CALL|SET)\b",
-    re.IGNORECASE,
+_DIRECTION_MACROS = (
+    ("{Player_Direction}", "player_direction"),
+    ("{Partner_Direction}", "partner_direction"),
+    ("{Pair_Direction}", "pair_direction"),
+    ("{Opponent_Pair_Direction}", "opponent_pair_direction"),
 )
+_VALUE_MACROS = (
+    "Player_ID",
+    "Players",
+    "Players_List",
+    "Clubs",
+    "Pairs",
+    "Start_Date",
+    "End_Date",
+    "Sort_Column",
+    "Min_Declares",
+    "Top_N",
+    "Board_Source",
+    "Hand_Source",
+    "Date_Filter",
+    "Club_Filter",
+    "Player_Filter",
+    "Pair_Filter",
+    "Hand_Date_Filter",
+)
+_FILTER_MACROS = (
+    "{Date_Filter}",
+    "{Club_Filter}",
+    "{Player_Filter}",
+    "{Pair_Filter}",
+    "{Hand_Date_Filter}",
+)
+_ALLOWED_SORT_COLUMNS = frozenset(SORT_OPTIONS) | {"Count", "Declarer", "session_id"}
+_FAVORITES_CACHE: Optional[Dict[str, Any]] = None
 
 
 def resolve_data_path() -> pathlib.Path:
@@ -188,6 +220,9 @@ def resolve_data_path() -> pathlib.Path:
     env = os.environ.get(DATA_DIR_ENV)
     if env:
         return pathlib.Path(env)
+    for candidate in api_common.data_root_search_paths("acbl"):
+        if candidate.exists():
+            return candidate
     return pathlib.Path(__file__).resolve().parent / "data"
 
 
@@ -198,6 +233,7 @@ def data_search_roots() -> List[pathlib.Path]:
         env = os.environ.get(key)
         if env:
             roots.append(pathlib.Path(env))
+    roots.extend(api_common.data_root_search_paths("acbl"))
     roots.append(pathlib.Path(__file__).resolve().parent / "data")
     for extra in (
         pathlib.Path("/app/extra-data"),
@@ -399,131 +435,246 @@ def apply_regex_filter(hand_records_df, brs_regex, sample_size=100000):
     return df
 
 
-def create_query(
-    database_name,
-    groupby,
-    having,
-    limit,
-    columns,
-    clubs,
-    players,
-    pairs,
-    min_declares,
-    stat_column,
-    minimum_mps,
-    maximum_mps,
-    start_date,
-    end_date,
-):
-    query_select = f"SELECT {columns}"
-    query_from = f"FROM {database_name}"
-    query_where_clubs = "" if len(clubs) == 0 else f"Club IN ({','.join(clubs)})"
-    query_where_players = (
-        ""
-        if len(players) == 0
-        else (
-            f"Player_ID_N IN ({','.join(players)}) OR "
-            f"Player_ID_E IN ({','.join(players)}) OR "
-            f"Player_ID_S IN ({','.join(players)}) OR "
-            f"Player_ID_W IN ({','.join(players)})"
+def sql_literal_list(values: Sequence[Any]) -> str:
+    return ",".join("'" + str(value).replace("'", "''") + "'" for value in values)
+
+
+def validate_sort_column(sort_column: str) -> str:
+    name = str(sort_column or "Declarer_Pct")
+    if name not in _ALLOWED_SORT_COLUMNS:
+        raise ValueError(f"Unsupported sort column {name!r}")
+    return name
+
+
+def process_sql_macros(sql: str, meta: Optional[Dict[str, Any]] = None) -> str:
+    """Replace postmortem-style and filter macros. Missing filter snippets become empty."""
+    payload = meta or {}
+    for macro, key in _DIRECTION_MACROS:
+        value = payload.get(key)
+        if value is None:
+            value = payload.get(macro)
+        if value is None or str(value) == "":
+            continue
+        sql = sql.replace(macro, str(value))
+    for key in _VALUE_MACROS:
+        macro = "{" + key + "}"
+        if key in payload:
+            value = payload[key]
+        elif macro in payload:
+            value = payload[macro]
+        else:
+            continue
+        if value is None:
+            continue
+        sql = sql.replace(macro, str(value))
+    for macro in _FILTER_MACROS:
+        sql = sql.replace(macro, "")
+    return sql
+
+
+def reject_unresolved_direction_macros(sql: str) -> None:
+    leftover = [macro for macro, _key in _DIRECTION_MACROS if macro in sql]
+    if leftover:
+        raise ValueError("Unresolved SQL macro: " + ", ".join(leftover))
+
+
+def expand_sql(sql: str, meta: Optional[Dict[str, Any]] = None) -> str:
+    """Expand macros with report defaults so sidecar SQL works without a full meta dict."""
+    payload = build_report_meta()
+    if meta:
+        payload.update(meta)
+    expanded = process_sql_macros((sql or "").strip().rstrip(";"), payload)
+    reject_unresolved_direction_macros(expanded)
+    return expanded
+
+
+def build_report_meta(
+    *,
+    clubs: Sequence[str] = (),
+    players: Sequence[str] = (),
+    pairs: Sequence[str] = (),
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    sort_column: str = "Declarer_Pct",
+    min_declares: int = 0,
+    top_n: int = 100,
+    club_or_tournament: str = "club",
+    pair_direction: Optional[str] = None,
+    opponent_pair_direction: Optional[str] = None,
+    player_direction: Optional[str] = None,
+    partner_direction: Optional[str] = None,
+) -> Dict[str, Any]:
+    sort_column = validate_sort_column(sort_column)
+    player_ids = [str(player) for player in players]
+    club_ids = [str(club) for club in clubs]
+    pair_ids = [str(pair) for pair in pairs]
+    player_list_sql = sql_literal_list(player_ids) if player_ids else ""
+    club_list_sql = sql_literal_list(club_ids) if club_ids else ""
+    pair_list_sql = sql_literal_list(pair_ids) if pair_ids else ""
+    date_filter = (
+        f"AND Date BETWEEN '{start_date}' AND '{end_date}'"
+        if start_date and end_date
+        else ""
+    )
+    hand_date_filter = (
+        f"AND game_date BETWEEN '{start_date}' AND '{end_date}'"
+        if start_date and end_date
+        else ""
+    )
+    club_filter = (
+        f"AND CAST(Club AS VARCHAR) IN ({club_list_sql})" if club_list_sql else ""
+    )
+    player_filter = ""
+    if player_list_sql:
+        seats = " OR ".join(
+            f"CAST({col} AS VARCHAR) IN ({player_list_sql})"
+            for col in ("Player_ID_N", "Player_ID_E", "Player_ID_S", "Player_ID_W")
         )
-    )
-    query_where_pairs = (
-        ""
-        if len(pairs) == 0
-        else (
-            "CONCAT(Declarer,'_',Dummy) IN ('"
-            + "','".join(pairs)
-            + "') OR CONCAT(Dummy,'_',Declarer) IN ('"
-            + "','".join(pairs)
-            + "')"
+        player_filter = f"AND ({seats})"
+    pair_filter = ""
+    if pair_list_sql:
+        pair_filter = (
+            "AND (CONCAT(CAST(Declarer AS VARCHAR), '_', CAST(Dummy AS VARCHAR)) "
+            f"IN ({pair_list_sql}) OR "
+            "CONCAT(CAST(Dummy AS VARCHAR), '_', CAST(Declarer AS VARCHAR)) "
+            f"IN ({pair_list_sql}))"
         )
+    try:
+        board_source = board_results_source(club_or_tournament)
+    except ValueError:
+        board_source = "club_board_results"
+    try:
+        hand_source = hand_records_source(club_or_tournament)
+    except ValueError:
+        hand_source = "club_hand_records"
+    return {
+        "player_direction": player_direction,
+        "partner_direction": partner_direction,
+        "pair_direction": pair_direction,
+        "opponent_pair_direction": opponent_pair_direction,
+        "Player_ID": player_ids[0] if player_ids else "",
+        "Players": player_list_sql,
+        "Players_List": player_list_sql,
+        "Clubs": club_list_sql,
+        "Pairs": pair_list_sql,
+        "Start_Date": start_date or "",
+        "End_Date": end_date or "",
+        "Sort_Column": sort_column,
+        "Min_Declares": str(int(min_declares)),
+        "Top_N": str(int(top_n)),
+        "Board_Source": board_source,
+        "Hand_Source": hand_source,
+        "Date_Filter": date_filter,
+        "Club_Filter": club_filter,
+        "Player_Filter": player_filter,
+        "Pair_Filter": pair_filter,
+        "Hand_Date_Filter": hand_date_filter,
+    }
+
+
+def infer_pair_direction(df: pl.DataFrame, player_id: str) -> Tuple[Optional[str], Optional[str]]:
+    counts = {"NS": 0, "EW": 0}
+    for col, pair in (
+        ("Player_ID_N", "NS"),
+        ("Player_ID_S", "NS"),
+        ("Player_ID_E", "EW"),
+        ("Player_ID_W", "EW"),
+    ):
+        if col in df.columns:
+            counts[pair] += int(df.select(pl.col(col).cast(pl.Utf8).eq(player_id).sum()).item())
+    if counts["NS"] == 0 and counts["EW"] == 0:
+        return None, None
+    if counts["NS"] >= counts["EW"]:
+        return "NS", "EW"
+    return "EW", "NS"
+
+
+def favorites_file_path() -> pathlib.Path:
+    env = os.environ.get("BRIDGESTATS_FAVORITES")
+    if env:
+        return pathlib.Path(env)
+    return pathlib.Path(__file__).resolve().parent / "default.favorites.json"
+
+
+def load_favorites_payload() -> Dict[str, Any]:
+    global _FAVORITES_CACHE
+    if _FAVORITES_CACHE is not None:
+        return _FAVORITES_CACHE
+    path = favorites_file_path()
+    if not path.is_file():
+        raise FileNotFoundError(f"Required configuration file not found: {path}")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError(f"{path} is not a JSON object")
+    _FAVORITES_CACHE = payload
+    return payload
+
+
+def flatten_favorites(payload: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    return api_common.flatten_favorites_payload(payload or load_favorites_payload())
+
+
+def list_favorites(favorite_id: Optional[str] = None) -> Dict[str, Any]:
+    return api_common.select_favorites(flatten_favorites(), favorite_id)
+
+
+def get_favorite(favorite_id: str) -> Dict[str, Any]:
+    listed = list_favorites(favorite_id)
+    return listed["favorites"][0]
+
+
+def execute_sql_on_frame(
+    df: pl.DataFrame,
+    sql: str,
+    meta: Optional[Dict[str, Any]] = None,
+    limit: Optional[int] = None,
+    source: str = CON_REGISTER_NAME,
+) -> Dict[str, Any]:
+    sql, limit = api_common.prepare_sql(expand_sql(sql, meta), source, limit)
+
+    def _setup(con) -> None:
+        con.register(CON_REGISTER_NAME, df)
+        if source != CON_REGISTER_NAME:
+            con.register(source, df)
+
+    result, truncated = api_common.truncate_frame(
+        api_common.run_duckdb_sql(sql, _setup), limit
     )
-    query_where_mps = ""
-    query_where_dates = f"Date BETWEEN '{start_date}' AND '{end_date}'"
-    query_where_string = " AND ".join(
-        s
-        for s in [
-            query_where_clubs,
-            query_where_players,
-            query_where_pairs,
-            query_where_mps,
-            query_where_dates,
-        ]
-        if len(s)
+    table = frame_to_table(result)
+    table.update({"sql": sql, "source": source, "truncated": truncated})
+    return table
+
+
+def run_favorite(
+    favorite_id: str,
+    meta: Optional[Dict[str, Any]] = None,
+    df: Optional[pl.DataFrame] = None,
+    source: Optional[str] = None,
+    limit: Optional[int] = None,
+) -> Dict[str, Any]:
+    favorite = get_favorite(favorite_id)
+    payload = build_report_meta()
+    if meta:
+        payload.update(meta)
+    sql = favorite["statements"][0]["sql"]
+    resolved_source = source or process_sql_macros(
+        favorite.get("source") or "{Board_Source}", payload
     )
-    query_where = "" if len(query_where_string) == 0 else "WHERE " + query_where_string
-    query_group = "" if len(groupby) == 0 else f"GROUP BY {groupby}"
-    query_having = "" if len(having) == 0 else f"HAVING {having}"
-    query_ordered_by = ""
-    query_limit = "" if limit == 0 else f"LIMIT {limit}"
-    return " ".join(
-        [
-            query_select,
-            query_from,
-            query_where,
-            query_group,
-            query_having,
-            query_ordered_by,
-            query_limit,
-        ]
-    )
+    if resolved_source.startswith("{") or resolved_source not in SOURCE_FILES:
+        resolved_source = payload.get("Board_Source") or "club_board_results"
+    if df is not None:
+        return execute_sql_on_frame(
+            df, sql, meta=payload, limit=limit, source=resolved_source
+        )
+    return run_sql(sql, resolved_source, limit=limit or DEFAULT_SQL_ROW_LIMIT, meta=payload)
 
 
 def player_position_frequency(df, players):
     """Boards sat by seat. Passed-out boards have no Declarer/Dummy/OnLead/NotOnLead."""
-    rows = []
-    for player in players:
-        player = str(player)
-        named = df.filter(pl.col("Declarer").eq(player))
-        if named.height == 0 and "Declarer_Name" in df.columns:
-            named = df.filter(
-                pl.col("Player_ID_N").eq(player)
-                | pl.col("Player_ID_E").eq(player)
-                | pl.col("Player_ID_S").eq(player)
-                | pl.col("Player_ID_W").eq(player)
-            )
-        player_name = None
-        if named.height and "Declarer_Name" in named.columns:
-            player_name = named.select("Declarer_Name").tail(1).row(0)[0]
-
-        seats = {}
-        for pos in ("Declarer", "OnLead", "Dummy", "NotOnLead"):
-            seats[pos] = int(df.select(pl.col(pos).eq(player).sum()).item())
-        contract_total = sum(seats.values())
-
-        directions = {}
-        direction_total = 0
-        for col, seat in (
-            ("Player_ID_N", "N"),
-            ("Player_ID_E", "E"),
-            ("Player_ID_S", "S"),
-            ("Player_ID_W", "W"),
-        ):
-            count = (
-                int(df.select(pl.col(col).eq(player).sum()).item())
-                if col in df.columns
-                else 0
-            )
-            directions[seat] = count
-            direction_total += count
-
-        passed_out = max(direction_total - contract_total, 0)
-        denom = direction_total if direction_total else contract_total
-        row = {
-            "Player": player,
-            "Player_Name": player_name,
-            "Count": denom,
-            "PassedOut": passed_out,
-        }
-        for seat, count in directions.items():
-            row[seat] = count
-            row[f"{seat}_Pct"] = count / denom if denom else 0
-        for pos, count in seats.items():
-            row[pos] = count
-            row[f"{pos}_Pct"] = count / denom if denom else 0
-        rows.append(row)
-    return pl.DataFrame(rows, strict=False)
+    if not players:
+        return pl.DataFrame()
+    meta = build_report_meta(players=players)
+    return table_to_frame(run_favorite("Player_Position_Frequency", meta, df=df))
 
 
 def load_board_results(
@@ -590,10 +741,6 @@ def load_club_board_results(filename, **kwargs):
 
 def load_tournament_board_results(filename, **kwargs):
     return load_board_results(filename, **kwargs)
-
-
-def duckdb_query(query):
-    return duckdb.query(query).to_df()
 
 
 def board_results_source(club_or_tournament: str) -> str:
@@ -694,184 +841,45 @@ def dedupe_boards_by_pbn_declarer(df: pl.DataFrame) -> pl.DataFrame:
     )
 
 
-def _present_sort_options(df: pl.DataFrame) -> List[str]:
-    return [col for col in SORT_OPTIONS if col in df.columns]
-
-
-def aggregate_by_declarer(
-    df: pl.DataFrame, sort_column: str, min_declares: int, top_n: int
-) -> pl.DataFrame:
-    sort_cols = _present_sort_options(df)
-    group_key = "Declarer" if "Declarer" in df.columns else df.columns[0]
-    aggs = [pl.col("Count").count().alias("Count")] if "Count" in df.columns else [pl.len().alias("Count")]
-    for col, how in (
-        ("Date", "first"),
-        ("Declarer_Name", "first"),
-        ("Player1", "last"),
-        ("Player2", "last"),
-    ):
-        if col in df.columns and col != group_key:
-            aggs.append(getattr(pl.col(col), how)().alias(col))
-    aggs.extend(pl.col(col).mean().alias(col) for col in sort_cols if col != group_key)
-    out = df.group_by(group_key).agg(aggs)
-    if "Count" in out.columns:
-        out = out.filter(pl.col("Count") >= min_declares)
-    if sort_column in out.columns:
-        out = out.sort(sort_column, descending=True)
-    return out.head(top_n)
-
-
-def aggregate_by_session(df: pl.DataFrame, sort_column: str) -> pl.DataFrame:
-    sort_cols = _present_sort_options(df)
-    aggs = [pl.col("Count").count().alias("Count")]
-    for col in ("Declarer_Pair", "Declarer", "Declarer_Name"):
-        if col in df.columns:
-            aggs.append(pl.col(col).last().alias(col))
-    aggs.extend(pl.col(col).mean().alias(col) for col in sort_cols)
-    if "session_id" not in df.columns:
-        raise ValueError("session_id is required to aggregate by session")
-    out = df.group_by("session_id").agg(aggs)
-    if sort_column in out.columns:
-        out = out.sort(sort_column, descending=True)
-    return out
-
-
 def identical_boards_comparison(df: pl.DataFrame, sort_column: str) -> Dict[str, Any]:
     needed = {"Date", "session_id", "HandRecordBoard"}
+    empty = {
+        "identical_boards": frame_to_table(pl.DataFrame()),
+        "session_means": frame_to_table(pl.DataFrame()),
+        "n_boards": 0,
+        "n_sessions": 0,
+    }
     if not needed.issubset(df.columns) or df.height == 0:
-        return {
-            "identical_boards": frame_to_table(pl.DataFrame()),
-            "session_means": frame_to_table(pl.DataFrame()),
-            "n_boards": 0,
-            "n_sessions": 0,
-        }
-    group_counts = df.group_by(["Date", "session_id", "HandRecordBoard"]).agg(
-        pl.len().alias("group_count")
+        return empty
+    meta = build_report_meta(sort_column=sort_column, top_n=MAX_TABLE_ROWS)
+    boards = run_favorite("Identical_Boards", meta, df=df, limit=MAX_TABLE_ROWS)
+    board_df = table_to_frame(boards)
+    if board_df.height == 0:
+        return empty
+    means = run_favorite(
+        "Identical_Boards_Session_Means", meta, df=df, limit=MAX_TABLE_ROWS
     )
-    table_df = df.join(group_counts, on=["Date", "session_id", "HandRecordBoard"])
-    table_df = table_df.filter(pl.col("group_count") > 1).drop("group_count")
-    if table_df.height == 0:
-        return {
-            "identical_boards": frame_to_table(table_df),
-            "session_means": frame_to_table(pl.DataFrame()),
-            "n_boards": 0,
-            "n_sessions": 0,
-        }
-    table_df = table_df.with_columns(
-        pl.concat_str(
-            ["Date", "session_id", "HandRecordBoard"], separator="_"
-        ).alias("group_key")
-    )
-    group_keys = (
-        table_df.select("group_key")
-        .sort("group_key")
-        .unique(maintain_order=True)
-        .with_row_index("ngroup")
-    )
-    table_df = table_df.join(group_keys, on="group_key").drop("group_key")
-    if "Declarer_Name" in table_df.columns:
-        table_df = table_df.sort(["ngroup", "Declarer_Name"])
-    else:
-        table_df = table_df.sort("ngroup")
-    n_boards = int(table_df.select(pl.col("ngroup").max()).item() or 0) + 1
-    n_sessions = table_df.select(pl.col("session_id")).n_unique()
-    sort_cols = _present_sort_options(table_df)
-    aggs = [pl.col("Count").count().alias("Count")] if "Count" in table_df.columns else []
-    for col in ("Declarer_Pair", "Declarer_Name"):
-        if col in table_df.columns:
-            aggs.append(pl.col(col).last().alias(col))
-    aggs.extend(pl.col(col).mean().alias(col) for col in sort_cols)
-    grouped = table_df.group_by("Declarer").agg(aggs) if "Declarer" in table_df.columns else table_df
-    if isinstance(grouped, pl.DataFrame) and sort_column in grouped.columns:
-        grouped = grouped.sort(sort_column, descending=True)
+    n_boards = 0
+    n_sessions = 0
+    if "ngroup" in board_df.columns:
+        n_boards = int(board_df.select(pl.col("ngroup").max()).item() or 0) + 1
+    if "session_id" in board_df.columns:
+        n_sessions = board_df.select(pl.col("session_id")).n_unique()
     return {
-        "identical_boards": frame_to_table(table_df, limit=MAX_TABLE_ROWS),
-        "session_means": frame_to_table(grouped, limit=MAX_TABLE_ROWS),
+        "identical_boards": boards,
+        "session_means": means,
         "n_boards": n_boards,
         "n_sessions": n_sessions,
     }
 
 
 def pair_head_to_head(df: pl.DataFrame, sort_column: str) -> pl.DataFrame:
-    unique_columns = [
-        col
-        for col in ("Date", "session_id", "HandRecordBoard", "Declarer_Pair")
-        if col in df.columns
-    ]
     if "HandRecordBoard" not in df.columns or "Declarer" not in df.columns:
         return pl.DataFrame()
-    sort_columns = unique_columns + (
-        ["Declarer_Name"] if "Declarer_Name" in df.columns else []
+    meta = build_report_meta(sort_column=sort_column, top_n=MAX_TABLE_ROWS)
+    return table_to_frame(
+        run_favorite("Pair_Head_To_Head", meta, df=df, limit=MAX_TABLE_ROWS)
     )
-    unique_df = df.sort(sort_columns).unique(unique_columns, maintain_order=True)
-    group_counts = unique_df.group_by(["Date", "session_id", "HandRecordBoard"]).agg(
-        pl.len().alias("group_count"),
-        pl.col("Declarer").alias("Declarers"),
-    )
-    valid_groups = group_counts.filter(pl.col("group_count") > 1).select(
-        ["Date", "session_id", "HandRecordBoard", "Declarers", "group_count"]
-    )
-    if valid_groups.height == 0:
-        return pl.DataFrame()
-    filtered_df = unique_df.join(
-        valid_groups, on=["Date", "session_id", "HandRecordBoard"], how="inner"
-    )
-    sort_opts = _present_sort_options(filtered_df)
-    compare_cols = ["HandRecordBoard", "Declarer"] + (
-        ["Declarer_Name"] if "Declarer_Name" in filtered_df.columns else []
-    ) + sort_opts
-    h2h_df = (
-        filtered_df.join(
-            filtered_df.select(compare_cols),
-            on="HandRecordBoard",
-            suffix="_compare",
-        )
-        .filter(pl.col("Declarer") != pl.col("Declarer_compare"))
-        .unique(
-            subset=["HandRecordBoard", "Declarer", "Declarer_compare"],
-            maintain_order=True,
-        )
-    )
-    h2h_df = h2h_df.with_columns(
-        [
-            (pl.col("Declarer") + "_" + pl.col("Declarer_compare")).alias("H2H"),
-            (
-                pl.when(pl.col("Declarer") < pl.col("Declarer_compare"))
-                .then(pl.col("Declarer") + "_" + pl.col("Declarer_compare"))
-                .otherwise(pl.col("Declarer_compare") + "_" + pl.col("Declarer"))
-            ).alias("H2H_sorted"),
-        ]
-    )
-    aggs = [
-        pl.col("HandRecordBoard").count().alias("Count"),
-        pl.col("Declarer").first().alias("Declarer1"),
-        pl.col("Declarer_compare").first().alias("Declarer2"),
-    ]
-    if "Declarer_Name" in h2h_df.columns:
-        aggs.append(pl.col("Declarer_Name").first().alias("Declarer_Name"))
-    if "Declarer_Name_compare" in h2h_df.columns:
-        aggs.append(pl.col("Declarer_Name_compare").first().alias("Declarer_Name2"))
-    aggs.extend(pl.col(col).mean().alias(col) for col in sort_opts)
-    h2h_df = h2h_df.group_by(["H2H", "H2H_sorted"]).agg(aggs)
-    if {"Declarer_Name", "Declarer_Name2"}.issubset(h2h_df.columns):
-        h2h_df = (
-            h2h_df.with_columns(
-                pl.concat_list([pl.col("Declarer_Name"), pl.col("Declarer_Name2")]).alias(
-                    "names"
-                )
-            )
-            .with_columns(
-                pl.col("names")
-                .map_elements(lambda x: "_".join(sorted(x)), return_dtype=pl.Utf8)
-                .alias("group_key")
-            )
-            .sort(["group_key", "Declarer_Name"])
-            .with_columns(pl.col("group_key").rank("dense").alias("ngroup"))
-            .drop(["names", "group_key"])
-        )
-    if sort_column in h2h_df.columns:
-        h2h_df = h2h_df.sort(sort_column, descending=True)
-    return h2h_df
 
 
 def _json_value(value: Any) -> Any:
@@ -1077,31 +1085,28 @@ def schema_columns(
     }
 
 
-def run_sql(sql: str, source: str, limit: int = DEFAULT_SQL_ROW_LIMIT) -> Dict[str, Any]:
+def run_sql(
+    sql: str,
+    source: str,
+    limit: int = DEFAULT_SQL_ROW_LIMIT,
+    meta: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     if source not in SOURCE_FILES:
         raise ValueError(
             f"Unknown source {source!r}. Expected one of: {', '.join(SOURCE_FILES)}"
         )
-    sql = (sql or "").strip().rstrip(";")
-    if not sql:
-        raise ValueError("sql is required")
-    if _SQL_FORBIDDEN.search(sql):
-        raise ValueError("SQL contains a forbidden statement")
-    limit = max(1, min(limit or DEFAULT_SQL_ROW_LIMIT, MAX_SQL_ROW_LIMIT))
+    sql, limit = api_common.prepare_sql(expand_sql(sql, meta), source, limit)
     path = resolve_source_path(source)
     escaped = str(path).replace("'", "''")
-    if f"from {CON_REGISTER_NAME}" not in sql.lower() and f"from {source}" not in sql.lower():
-        sql = f"FROM {CON_REGISTER_NAME} " + sql
-    con = duckdb.connect()
-    try:
+
+    def _setup(con) -> None:
         con.execute(f"CREATE VIEW {source} AS SELECT * FROM read_parquet('{escaped}')")
         if source != CON_REGISTER_NAME:
             con.execute(f"CREATE VIEW {CON_REGISTER_NAME} AS SELECT * FROM {source}")
-        result = con.execute(sql).pl()
-    finally:
-        con.close()
-    truncated = result.height > limit
-    result = result.head(limit)
+
+    result, truncated = api_common.truncate_frame(
+        api_common.run_duckdb_sql(sql, _setup), limit
+    )
     table = frame_to_table(result)
     table.update({"sql": sql, "source": source, "truncated": truncated})
     return table
@@ -1326,38 +1331,54 @@ def board_results_report(
     )
     if selected.height == 0:
         raise ValueError("No rows selected. Adjust club, player, pair, or date filters.")
-    if group_by == "session_id":
-        leaderboard = aggregate_by_session(selected, sort_column)
-    else:
-        leaderboard = aggregate_by_declarer(selected, sort_column, min_declares, top_n)
+    meta = build_report_meta(
+        clubs=clubs,
+        players=players,
+        pairs=pairs,
+        start_date=start_date,
+        end_date=end_date,
+        sort_column=sort_column,
+        min_declares=min_declares,
+        top_n=top_n,
+        club_or_tournament=club_or_tournament,
+    )
+    if players:
+        pair_direction, opponent_pair_direction = infer_pair_direction(
+            any_position, str(players[0])
+        )
+        meta["pair_direction"] = pair_direction
+        meta["opponent_pair_direction"] = opponent_pair_direction
     player_boards = []
     session_means = None
     position = None
     if players:
-        position = frame_to_table(player_position_frequency(any_position, players))
-        for declarer in selected.select("Declarer").unique(maintain_order=True).to_series():
-            player_df = selected.filter(pl.col("Declarer").eq(declarer))
-            name = None
-            if "Declarer_Name" in player_df.columns and player_df.height:
-                name = player_df.select("Declarer_Name").tail(1).row(0)[0]
-            sorted_df = (
-                player_df.sort(sort_column, descending=True)
-                if sort_column in player_df.columns
-                else player_df
-            )
-            player_boards.append(
-                {
-                    "declarer": declarer,
-                    "declarer_name": name,
-                    **frame_to_table(sorted_df, limit=MAX_TABLE_ROWS),
-                }
-            )
-        session_means = frame_to_table(
-            aggregate_by_session(selected, sort_column), limit=MAX_TABLE_ROWS
+        position = run_favorite("Player_Position_Frequency", meta, df=any_position)
+        boards = run_favorite(
+            "Player_Boards", meta, df=selected, limit=MAX_TABLE_ROWS
+        )
+        boards_df = table_to_frame(boards)
+        if boards_df.height and "Declarer" in boards_df.columns:
+            for declarer in boards_df.select("Declarer").unique(maintain_order=True).to_series():
+                player_df = boards_df.filter(pl.col("Declarer").eq(declarer))
+                name = None
+                if "Declarer_Name" in player_df.columns and player_df.height:
+                    name = player_df.select("Declarer_Name").tail(1).row(0)[0]
+                player_boards.append(
+                    {
+                        "declarer": declarer,
+                        "declarer_name": name,
+                        **frame_to_table(player_df, limit=MAX_TABLE_ROWS),
+                    }
+                )
+        session_means = run_favorite(
+            "Session_Leaderboard", meta, df=selected, limit=MAX_TABLE_ROWS
         )
         leaderboard_table = None
     else:
-        leaderboard_table = frame_to_table(leaderboard, limit=top_n)
+        favorite_id = (
+            "Session_Leaderboard" if group_by == "session_id" else "Declarer_Leaderboard"
+        )
+        leaderboard_table = run_favorite(favorite_id, meta, df=selected, limit=top_n)
     charts = chart_series(selected, selected_charts or []) if include_charts else []
     if include_charts:
         pct_cols = [col for col in selected.columns if col.endswith("Pct") or col.endswith("Pct_Max")]
@@ -1479,14 +1500,22 @@ def hand_records_report(
     float_cols = [col for col in df.columns if df[col].dtype in (pl.Float32, pl.Float64)]
     if float_cols:
         df = df.with_columns([pl.col(col).round(2) for col in float_cols])
-    table_n = min(table_limit, df.height) if df.height else 0
-    table_df = df.sample(n=table_n) if table_n else df
+    meta = build_report_meta(
+        clubs=clubs,
+        players=players,
+        pairs=pairs,
+        start_date=start_date,
+        end_date=end_date,
+        top_n=table_limit,
+        club_or_tournament=club_or_tournament,
+    )
+    table = run_favorite("Hand_Records_Sample", meta, df=df, limit=table_limit)
     return {
         "source": source,
         "row_count": source_count,
         "unique_hands": unique_hands,
         "selected_count": df.height,
         "sample_size": sample_size,
-        "table": frame_to_table(table_df),
+        "table": table,
         "charts": chart_series(df, selected_charts or []),
     }

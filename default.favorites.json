@@ -1,0 +1,182 @@
+{
+	"Buttons": {
+		"Club_Player": {
+			"title": "Club Player",
+			"help": "Club player board-result reports",
+			"prompts": [
+				"@Player_Position_Frequency",
+				"@Declarer_Leaderboard",
+				"@Player_Boards",
+				"@Session_Leaderboard"
+			]
+		},
+		"Club_Pair": {
+			"title": "Club Pair",
+			"help": "Club pair board-result reports",
+			"prompts": [
+				"@Declarer_Leaderboard",
+				"@Pair_Head_To_Head",
+				"@Identical_Boards"
+			]
+		},
+		"Club_Player_Session": {
+			"title": "Club Player Session",
+			"help": "Club player session aggregates",
+			"prompts": [
+				"@Session_Leaderboard",
+				"@Player_Boards"
+			]
+		},
+		"Club_Pair_Session": {
+			"title": "Club Pair Session",
+			"help": "Club pair session aggregates",
+			"prompts": [
+				"@Session_Leaderboard",
+				"@Identical_Boards",
+				"@Pair_Head_To_Head"
+			]
+		},
+		"Club_Hand_Records": {
+			"title": "Club Hand Records",
+			"help": "Club hand-record sample",
+			"prompts": [
+				"@Hand_Records_Sample"
+			]
+		},
+		"Tournament_Player": {
+			"title": "Tournament Player",
+			"help": "Tournament player board-result reports",
+			"prompts": [
+				"@Player_Position_Frequency",
+				"@Declarer_Leaderboard",
+				"@Player_Boards",
+				"@Session_Leaderboard"
+			]
+		},
+		"Tournament_Pair": {
+			"title": "Tournament Pair",
+			"help": "Tournament pair board-result reports",
+			"prompts": [
+				"@Declarer_Leaderboard",
+				"@Pair_Head_To_Head",
+				"@Identical_Boards"
+			]
+		},
+		"Tournament_Player_Session": {
+			"title": "Tournament Player Session",
+			"help": "Tournament player session aggregates",
+			"prompts": [
+				"@Session_Leaderboard",
+				"@Player_Boards"
+			]
+		},
+		"Tournament_Pair_Session": {
+			"title": "Tournament Pair Session",
+			"help": "Tournament pair session aggregates",
+			"prompts": [
+				"@Session_Leaderboard",
+				"@Identical_Boards",
+				"@Pair_Head_To_Head"
+			]
+		},
+		"Tournament_Hand_Records": {
+			"title": "Tournament Hand Records",
+			"help": "Tournament hand-record sample",
+			"prompts": [
+				"@Hand_Records_Sample"
+			]
+		}
+	},
+	"SelectBoxes": {
+		"Vetted_Prompts": {
+			"Player_Position_Frequency": {
+				"title": "Player position frequency",
+				"help": "**Seat and role counts, including passed-out boards.**",
+				"source": "{Board_Source}",
+				"prompts": [
+					{
+						"prompt": "Seat and direction frequency for the selected players",
+						"sql": "WITH players AS (SELECT UNNEST([{Players_List}]) AS Player), counts AS (SELECT p.Player, CAST(SUM(CASE WHEN CAST(s.Player_ID_N AS VARCHAR) = p.Player THEN 1 ELSE 0 END) AS BIGINT) AS N, CAST(SUM(CASE WHEN CAST(s.Player_ID_E AS VARCHAR) = p.Player THEN 1 ELSE 0 END) AS BIGINT) AS E, CAST(SUM(CASE WHEN CAST(s.Player_ID_S AS VARCHAR) = p.Player THEN 1 ELSE 0 END) AS BIGINT) AS S, CAST(SUM(CASE WHEN CAST(s.Player_ID_W AS VARCHAR) = p.Player THEN 1 ELSE 0 END) AS BIGINT) AS W, CAST(SUM(CASE WHEN CAST(s.Declarer AS VARCHAR) = p.Player THEN 1 ELSE 0 END) AS BIGINT) AS Declarer, CAST(SUM(CASE WHEN CAST(s.Dummy AS VARCHAR) = p.Player THEN 1 ELSE 0 END) AS BIGINT) AS Dummy, CAST(SUM(CASE WHEN CAST(s.OnLead AS VARCHAR) = p.Player THEN 1 ELSE 0 END) AS BIGINT) AS OnLead, CAST(SUM(CASE WHEN CAST(s.NotOnLead AS VARCHAR) = p.Player THEN 1 ELSE 0 END) AS BIGINT) AS NotOnLead, MAX(CASE WHEN CAST(s.Declarer AS VARCHAR) = p.Player THEN s.Declarer_Name END) AS Player_Name FROM self s CROSS JOIN players p GROUP BY p.Player) SELECT Player, Player_Name, (N + E + S + W) AS Count, GREATEST((N + E + S + W) - (Declarer + Dummy + OnLead + NotOnLead), 0) AS PassedOut, N, E, S, W, N / NULLIF((N + E + S + W), 0) AS N_Pct, E / NULLIF((N + E + S + W), 0) AS E_Pct, S / NULLIF((N + E + S + W), 0) AS S_Pct, W / NULLIF((N + E + S + W), 0) AS W_Pct, Declarer, Dummy, OnLead, NotOnLead, Declarer / NULLIF((N + E + S + W), 0) AS Declarer_Pct, Dummy / NULLIF((N + E + S + W), 0) AS Dummy_Pct, OnLead / NULLIF((N + E + S + W), 0) AS OnLead_Pct, NotOnLead / NULLIF((N + E + S + W), 0) AS NotOnLead_Pct FROM counts"
+					}
+				]
+			},
+			"Declarer_Leaderboard": {
+				"title": "Declarer leaderboard",
+				"help": "**Players ranked by the selected statistic.**",
+				"source": "{Board_Source}",
+				"prompts": [
+					{
+						"prompt": "Leaderboard by declarer",
+						"sql": "SELECT Declarer, ANY_VALUE(Declarer_Name) AS Declarer_Name, COUNT(*) AS Count, AVG(Declarer_Pct) AS Declarer_Pct, AVG(Score_Declarer) AS Score_Declarer, AVG(DD_Score_Declarer) AS DD_Score_Declarer, AVG(ParScore) AS ParScore, AVG(EV_Score_Declarer) AS EV_Score_Declarer, AVG(EV_Max_Declarer) AS EV_Max_Declarer, AVG(DD_GE) AS DD_GE, AVG(ParScore_GE) AS ParScore_GE, AVG(Tricks_DD_Diff) AS Tricks_DD_Diff, AVG(ParScore_DD_Diff) AS ParScore_DD_Diff, AVG(Score_Declarer_DD_Diff) AS Score_Declarer_DD_Diff, AVG(OverTricks) AS OverTricks, AVG(JustMade) AS JustMade, AVG(UnderTricks) AS UnderTricks, AVG(EV_Score_Declarer_Diff) AS EV_Score_Declarer_Diff, AVG(EV_Max_Declarer_Diff) AS EV_Max_Declarer_Diff, AVG(MP_Par_Pct_Declarer) AS MP_Par_Pct_Declarer, AVG(MP_EV_Pct_Declarer) AS MP_EV_Pct_Declarer, AVG(MP_EV_Max_Pct_Declarer) AS MP_EV_Max_Pct_Declarer, AVG(MP_EV_Pct_Declarer_Diff) AS MP_EV_Pct_Declarer_Diff, AVG(MP_EV_Max_Pct_Declarer_Diff) AS MP_EV_Max_Pct_Declarer_Diff, AVG(MP_EV_ParScore_Pct_Diff) AS MP_EV_ParScore_Pct_Diff, AVG(MP_EV_ParScore_Pct_Max_Diff) AS MP_EV_ParScore_Pct_Max_Diff FROM self WHERE 1=1 {Date_Filter} {Club_Filter} {Player_Filter} {Pair_Filter} GROUP BY Declarer HAVING COUNT(*) >= {Min_Declares} ORDER BY {Sort_Column} DESC LIMIT {Top_N}"
+					}
+				]
+			},
+			"Session_Leaderboard": {
+				"title": "Session leaderboard",
+				"help": "**Sessions ranked by the selected statistic.**",
+				"source": "{Board_Source}",
+				"prompts": [
+					{
+						"prompt": "Leaderboard by session",
+						"sql": "SELECT session_id, ANY_VALUE(Declarer_Pair) AS Declarer_Pair, ANY_VALUE(Declarer) AS Declarer, ANY_VALUE(Declarer_Name) AS Declarer_Name, COUNT(*) AS Count, AVG(Declarer_Pct) AS Declarer_Pct, AVG(Score_Declarer) AS Score_Declarer, AVG(DD_Score_Declarer) AS DD_Score_Declarer, AVG(ParScore) AS ParScore, AVG(EV_Score_Declarer) AS EV_Score_Declarer, AVG(EV_Max_Declarer) AS EV_Max_Declarer, AVG(DD_GE) AS DD_GE, AVG(ParScore_GE) AS ParScore_GE, AVG(Tricks_DD_Diff) AS Tricks_DD_Diff, AVG(ParScore_DD_Diff) AS ParScore_DD_Diff, AVG(Score_Declarer_DD_Diff) AS Score_Declarer_DD_Diff, AVG(OverTricks) AS OverTricks, AVG(JustMade) AS JustMade, AVG(UnderTricks) AS UnderTricks, AVG(EV_Score_Declarer_Diff) AS EV_Score_Declarer_Diff, AVG(EV_Max_Declarer_Diff) AS EV_Max_Declarer_Diff, AVG(MP_Par_Pct_Declarer) AS MP_Par_Pct_Declarer, AVG(MP_EV_Pct_Declarer) AS MP_EV_Pct_Declarer, AVG(MP_EV_Max_Pct_Declarer) AS MP_EV_Max_Pct_Declarer, AVG(MP_EV_Pct_Declarer_Diff) AS MP_EV_Pct_Declarer_Diff, AVG(MP_EV_Max_Pct_Declarer_Diff) AS MP_EV_Max_Pct_Declarer_Diff, AVG(MP_EV_ParScore_Pct_Diff) AS MP_EV_ParScore_Pct_Diff, AVG(MP_EV_ParScore_Pct_Max_Diff) AS MP_EV_ParScore_Pct_Max_Diff FROM self WHERE 1=1 {Date_Filter} {Club_Filter} {Player_Filter} {Pair_Filter} GROUP BY session_id ORDER BY {Sort_Column} DESC LIMIT {Top_N}"
+					}
+				]
+			},
+			"Player_Boards": {
+				"title": "Player boards",
+				"help": "**Board rows declared by the selected players.**",
+				"source": "{Board_Source}",
+				"prompts": [
+					{
+						"prompt": "Boards declared by the selected players",
+						"sql": "SELECT * FROM self WHERE 1=1 {Date_Filter} {Club_Filter} {Player_Filter} {Pair_Filter} AND CAST(Declarer AS VARCHAR) IN ({Players}) ORDER BY {Sort_Column} DESC"
+					}
+				]
+			},
+			"Identical_Boards": {
+				"title": "Identical boards",
+				"help": "**Same board declared more than once.**",
+				"source": "{Board_Source}",
+				"prompts": [
+					{
+						"prompt": "Identical boards across declarers",
+						"sql": "WITH groups AS (SELECT Date, session_id, HandRecordBoard FROM self WHERE 1=1 {Date_Filter} {Club_Filter} {Player_Filter} {Pair_Filter} GROUP BY Date, session_id, HandRecordBoard HAVING COUNT(*) > 1) SELECT s.*, (DENSE_RANK() OVER (ORDER BY s.Date, s.session_id, s.HandRecordBoard) - 1) AS ngroup FROM self s INNER JOIN groups g ON s.Date = g.Date AND s.session_id = g.session_id AND s.HandRecordBoard = g.HandRecordBoard ORDER BY ngroup, Declarer_Name"
+					}
+				]
+			},
+			"Identical_Boards_Session_Means": {
+				"title": "Identical-board means",
+				"help": "**Declarer means on boards that were declared more than once.**",
+				"source": "{Board_Source}",
+				"prompts": [
+					{
+						"prompt": "Session means on identical boards",
+						"sql": "WITH groups AS (SELECT Date, session_id, HandRecordBoard FROM self WHERE 1=1 {Date_Filter} {Club_Filter} {Player_Filter} {Pair_Filter} GROUP BY Date, session_id, HandRecordBoard HAVING COUNT(*) > 1), matched AS (SELECT s.* FROM self s INNER JOIN groups g ON s.Date = g.Date AND s.session_id = g.session_id AND s.HandRecordBoard = g.HandRecordBoard) SELECT Declarer, COUNT(*) AS Count, ANY_VALUE(Declarer_Pair) AS Declarer_Pair, ANY_VALUE(Declarer_Name) AS Declarer_Name, AVG(Declarer_Pct) AS Declarer_Pct, AVG(Score_Declarer) AS Score_Declarer, AVG(DD_Score_Declarer) AS DD_Score_Declarer, AVG(ParScore) AS ParScore, AVG(EV_Score_Declarer) AS EV_Score_Declarer, AVG(EV_Max_Declarer) AS EV_Max_Declarer, AVG(DD_GE) AS DD_GE, AVG(ParScore_GE) AS ParScore_GE, AVG(Tricks_DD_Diff) AS Tricks_DD_Diff, AVG(ParScore_DD_Diff) AS ParScore_DD_Diff, AVG(Score_Declarer_DD_Diff) AS Score_Declarer_DD_Diff, AVG(OverTricks) AS OverTricks, AVG(JustMade) AS JustMade, AVG(UnderTricks) AS UnderTricks, AVG(EV_Score_Declarer_Diff) AS EV_Score_Declarer_Diff, AVG(EV_Max_Declarer_Diff) AS EV_Max_Declarer_Diff, AVG(MP_Par_Pct_Declarer) AS MP_Par_Pct_Declarer, AVG(MP_EV_Pct_Declarer) AS MP_EV_Pct_Declarer, AVG(MP_EV_Max_Pct_Declarer) AS MP_EV_Max_Pct_Declarer, AVG(MP_EV_Pct_Declarer_Diff) AS MP_EV_Pct_Declarer_Diff, AVG(MP_EV_Max_Pct_Declarer_Diff) AS MP_EV_Max_Pct_Declarer_Diff, AVG(MP_EV_ParScore_Pct_Diff) AS MP_EV_ParScore_Pct_Diff, AVG(MP_EV_ParScore_Pct_Max_Diff) AS MP_EV_ParScore_Pct_Max_Diff FROM matched GROUP BY Declarer ORDER BY {Sort_Column} DESC"
+					}
+				]
+			},
+			"Pair_Head_To_Head": {
+				"title": "Pair head-to-head",
+				"help": "**Declarers compared on the same hand-record board.**",
+				"source": "{Board_Source}",
+				"prompts": [
+					{
+						"prompt": "Pair head-to-head on identical boards",
+						"sql": "WITH unique_df AS (SELECT * EXCLUDE (rn) FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY Date, session_id, HandRecordBoard, Declarer_Pair ORDER BY Declarer_Name) AS rn FROM self WHERE 1=1 {Date_Filter} {Club_Filter} {Player_Filter} {Pair_Filter}) WHERE rn = 1), valid AS (SELECT Date, session_id, HandRecordBoard FROM unique_df GROUP BY Date, session_id, HandRecordBoard HAVING COUNT(*) > 1), pairs AS (SELECT a.Declarer || '_' || b.Declarer AS H2H, CASE WHEN a.Declarer < b.Declarer THEN a.Declarer || '_' || b.Declarer ELSE b.Declarer || '_' || a.Declarer END AS H2H_sorted, a.Declarer, b.Declarer AS Declarer_compare, a.Declarer_Name, b.Declarer_Name AS Declarer_Name_compare, a.HandRecordBoard, a.Declarer_Pct, a.Score_Declarer, a.DD_Score_Declarer, a.ParScore, a.EV_Score_Declarer, a.EV_Max_Declarer, a.DD_GE, a.ParScore_GE, a.Tricks_DD_Diff, a.ParScore_DD_Diff, a.Score_Declarer_DD_Diff, a.OverTricks, a.JustMade, a.UnderTricks, a.EV_Score_Declarer_Diff, a.EV_Max_Declarer_Diff, a.MP_Par_Pct_Declarer, a.MP_EV_Pct_Declarer, a.MP_EV_Max_Pct_Declarer, a.MP_EV_Pct_Declarer_Diff, a.MP_EV_Max_Pct_Declarer_Diff, a.MP_EV_ParScore_Pct_Diff, a.MP_EV_ParScore_Pct_Max_Diff FROM unique_df a INNER JOIN unique_df b ON a.HandRecordBoard = b.HandRecordBoard AND a.Declarer != b.Declarer INNER JOIN valid v ON a.Date = v.Date AND a.session_id = v.session_id AND a.HandRecordBoard = v.HandRecordBoard) SELECT H2H, H2H_sorted, COUNT(*) AS Count, ANY_VALUE(Declarer) AS Declarer1, ANY_VALUE(Declarer_compare) AS Declarer2, ANY_VALUE(Declarer_Name) AS Declarer_Name, ANY_VALUE(Declarer_Name_compare) AS Declarer_Name2, AVG(Declarer_Pct) AS Declarer_Pct, AVG(Score_Declarer) AS Score_Declarer, AVG(DD_Score_Declarer) AS DD_Score_Declarer, AVG(ParScore) AS ParScore, AVG(EV_Score_Declarer) AS EV_Score_Declarer, AVG(EV_Max_Declarer) AS EV_Max_Declarer, AVG(DD_GE) AS DD_GE, AVG(ParScore_GE) AS ParScore_GE, AVG(Tricks_DD_Diff) AS Tricks_DD_Diff, AVG(ParScore_DD_Diff) AS ParScore_DD_Diff, AVG(Score_Declarer_DD_Diff) AS Score_Declarer_DD_Diff, AVG(OverTricks) AS OverTricks, AVG(JustMade) AS JustMade, AVG(UnderTricks) AS UnderTricks, AVG(EV_Score_Declarer_Diff) AS EV_Score_Declarer_Diff, AVG(EV_Max_Declarer_Diff) AS EV_Max_Declarer_Diff, AVG(MP_Par_Pct_Declarer) AS MP_Par_Pct_Declarer, AVG(MP_EV_Pct_Declarer) AS MP_EV_Pct_Declarer, AVG(MP_EV_Max_Pct_Declarer) AS MP_EV_Max_Pct_Declarer, AVG(MP_EV_Pct_Declarer_Diff) AS MP_EV_Pct_Declarer_Diff, AVG(MP_EV_Max_Pct_Declarer_Diff) AS MP_EV_Max_Pct_Declarer_Diff, AVG(MP_EV_ParScore_Pct_Diff) AS MP_EV_ParScore_Pct_Diff, AVG(MP_EV_ParScore_Pct_Max_Diff) AS MP_EV_ParScore_Pct_Max_Diff FROM pairs GROUP BY H2H, H2H_sorted ORDER BY {Sort_Column} DESC"
+					}
+				]
+			},
+			"Hand_Records_Sample": {
+				"title": "Hand records sample",
+				"help": "**Sample of filtered hand records.**",
+				"source": "{Hand_Source}",
+				"prompts": [
+					{
+						"prompt": "Sample hand-record rows",
+						"sql": "SELECT * FROM self WHERE 1=1 {Hand_Date_Filter} LIMIT {Top_N}"
+					}
+				]
+			}
+		}
+	}
+}

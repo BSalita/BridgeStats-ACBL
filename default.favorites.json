@@ -3,6 +3,7 @@
 		"Club_Player": {
 			"title": "Club Player",
 			"help": "Club player board-result reports",
+			"comment": "Optional prompt key Output is Grid, Deal, or Info; missing Output stays Grid.",
 			"prompts": [
 				"@Player_Position_Frequency",
 				"@Declarer_Leaderboard",

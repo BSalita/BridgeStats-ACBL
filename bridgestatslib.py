@@ -1103,6 +1103,13 @@ def run_sql(
         con.execute(f"CREATE VIEW {source} AS SELECT * FROM read_parquet('{escaped}')")
         if source != CON_REGISTER_NAME:
             con.execute(f"CREATE VIEW {CON_REGISTER_NAME} AS SELECT * FROM {source}")
+        recent = pathlib.Path(r"e:/bridge/data/acbl/recent/board_results.parquet")
+        if recent.is_file():
+            recent_sql = str(recent).replace("'", "''")
+            con.execute(
+                "CREATE VIEW club_recent_board_results AS "
+                f"SELECT * FROM read_parquet('{recent_sql}')"
+            )
 
     result, truncated = api_common.truncate_frame(
         api_common.run_duckdb_sql(sql, _setup), limit

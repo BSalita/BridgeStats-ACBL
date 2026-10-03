@@ -1063,6 +1063,21 @@ def dataset_info() -> Dict[str, Any]:
         "search_roots": [str(root) for root in data_search_roots()],
         "sources": sources,
         "sql_tables": list(SOURCE_FILES),
+        "recent_board_results": _recent_board_results_info(),
+    }
+
+
+def _recent_board_results_info() -> Dict[str, Any]:
+    path = pathlib.Path(r"e:/bridge/data/acbl/recent/board_results.parquet")
+    return {
+        "sql_view": "club_recent_board_results",
+        "available": path.is_file(),
+        "path": str(path) if path.is_file() else None,
+        "note": (
+            "Scores and contracts newer than the augmented parquet. "
+            "Registered on SQL connections beside self. Elo, double dummy, "
+            "and par stay on club_board_results."
+        ),
     }
 
 

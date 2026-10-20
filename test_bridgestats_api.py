@@ -106,6 +106,15 @@ class BridgeStatsApiTests(unittest.TestCase):
         )
         self.assertEqual(sql.status_code, 200)
         self.assertGreaterEqual(sql.json()["row_count"], 1)
+        invalid = self.client.post(
+            "/acbl-stats/sql",
+            json={
+                "sql": "SELECT MissingColumn FROM self",
+                "source": "club_board_results",
+            },
+        )
+        self.assertEqual(invalid.status_code, 422, invalid.text)
+        self.assertIn("MissingColumn", invalid.json()["detail"])
         report = self.client.post(
             "/acbl-stats/board-results",
             json={

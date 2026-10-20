@@ -6,13 +6,15 @@ import os
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+import duckdb
+import polars as pl
 from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel, Field
 
 import bridge_api_common as api_common
 import bridgestatslib as service
 
-API_BUILD_TAG = "2026-09-07-acbl-stats"
+API_BUILD_TAG = "2026-09-22-sql-errors"
 app = FastAPI(title="ACBL BridgeStats API", version="1.0.0")
 
 
@@ -77,7 +79,7 @@ class HandRecordsRequest(BaseModel):
 def _run(callable_, /, *args, **kwargs):
     try:
         return callable_(*args, **kwargs)
-    except (FileNotFoundError, KeyError, ValueError) as exc:
+    except (duckdb.Error, FileNotFoundError, KeyError, ValueError, pl.exceptions.ComputeError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 

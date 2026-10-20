@@ -15,6 +15,7 @@ DATA_ROOT_ENV = "DATA_ROOT"
 CON_REGISTER_NAME = "self"
 DEFAULT_SQL_ROW_LIMIT = 500
 MAX_SQL_ROW_LIMIT = 2000
+DUCKDB_THREADS = 8
 SQL_FORBIDDEN = re.compile(
     r"\b(COPY|INSTALL|LOAD|ATTACH|EXPORT|PRAGMA|CALL|SET)\b",
     re.IGNORECASE,
@@ -93,7 +94,7 @@ def prepare_sql(
 def run_duckdb_sql(sql: str, setup: Callable[[Any], None]) -> Any:
     import duckdb
 
-    con = duckdb.connect()
+    con = duckdb.connect(config={"threads": DUCKDB_THREADS})
     try:
         setup(con)
         return con.execute(sql).pl()

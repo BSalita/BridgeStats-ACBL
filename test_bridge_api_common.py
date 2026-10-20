@@ -24,6 +24,12 @@ class BridgeApiCommonTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             api_common.prepare_sql("COPY self TO 'x'", "club_board_results")
 
+    def test_run_duckdb_sql_caps_threads(self) -> None:
+        frame = api_common.run_duckdb_sql(
+            "SELECT current_setting('threads') AS threads", lambda con: None
+        )
+        self.assertEqual(frame["threads"][0], api_common.DUCKDB_THREADS)
+
     def test_select_favorites(self) -> None:
         payload = {
             "SelectBoxes": {

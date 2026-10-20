@@ -79,8 +79,12 @@ These take effect once the parquets are rebuilt.
 - ACBL club `result` / `Result`: the raw ACBL string (`=`, `+1`, `-2`) sat next to the integer
   `Result`. DuckDB is case-insensitive, so SQL `Result` resolved to the string. Step 1 now turns
   ACBL's `result` and `tricks_taken` into `Result` and `Tricks` and drops the raw columns.
-- ACBL player id `0` (SQLite casts a missing ACBL number to 0) is shared by every player without
-  a number. It is not yet changed; Elo keys ratings on player id. Exclude `0` when ranking players.
+- ACBL player id `0`: SQLite cast a missing ACBL number to 0, so every player without a number
+  shared one id, and Elo rated them as a single player. Club and tournament cleaning now store
+  null. Elo treats a null seat as unrated: it counts as 1500 in partnership and field averages, is
+  never updated, and has no reported rating. A pair with a null member has a null `Pair_IDs` and
+  no pair rating. `Pair_IDs` orders the two ids as strings everywhere (Elo, the pair lookup, and
+  prediction data).
 
 ## Related Projects
 - https://github.com/BSalita/Bridge_Game_Postmortem_Chatbot

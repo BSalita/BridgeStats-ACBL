@@ -1110,7 +1110,9 @@ def run_sql(
         raise ValueError(
             f"Unknown source {source!r}. Expected one of: {', '.join(SOURCE_FILES)}"
         )
-    sql, limit = api_common.prepare_sql(expand_sql(sql, meta), source, limit)
+    sql, limit = api_common.prepare_sql(
+        expand_sql(sql, meta), source, limit, other_tables=("club_recent_board_results",)
+    )
     path = resolve_source_path(source)
     escaped = str(path).replace("'", "''")
 

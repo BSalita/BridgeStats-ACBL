@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Sequence
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence
 
 DATA_ROOT_ENV = "DATA_ROOT"
 CON_REGISTER_NAME = "self"
@@ -66,11 +66,18 @@ def qualify_from_clause(
     sql: str,
     source: str,
     table_name: str = CON_REGISTER_NAME,
+    other_tables: Iterable[str] = (),
 ) -> str:
-    lowered = sql.lower()
-    if f"from {table_name}" not in lowered and f"from {source}" not in lowered:
-        return f"FROM {table_name} " + sql
-    return sql
+    """Prefix FROM self unless the SQL already reads a registered table.
+
+    other_tables are extra registered tables or views (for example a recent
+    view); SQL that reads one of them must not get FROM self in front.
+    """
+    names = [table_name, source, *other_tables]
+    pattern = r"\bfrom\s+(?:" + "|".join(re.escape(name) for name in names if name) + r")\b"
+    if re.search(pattern, sql, flags=re.IGNORECASE):
+        return sql
+    return f"FROM {table_name} " + sql
 
 
 def prepare_sql(
@@ -80,13 +87,14 @@ def prepare_sql(
     table_name: str = CON_REGISTER_NAME,
     default_limit: int = DEFAULT_SQL_ROW_LIMIT,
     max_limit: int = MAX_SQL_ROW_LIMIT,
+    other_tables: Iterable[str] = (),
 ) -> tuple[str, int]:
     sql = (sql or "").strip()
     if not sql:
         raise ValueError("sql is required")
     assert_readonly_sql(sql)
     return (
-        qualify_from_clause(sql, source, table_name=table_name),
+        qualify_from_clause(sql, source, table_name=table_name, other_tables=other_tables),
         clamp_sql_limit(limit, default=default_limit, maximum=max_limit),
     )
 

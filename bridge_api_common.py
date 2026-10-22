@@ -105,7 +105,7 @@ def run_duckdb_sql(sql: str, setup: Callable[[Any], None]) -> Any:
     con = duckdb.connect(config={"threads": DUCKDB_THREADS})
     try:
         setup(con)
-        return con.execute(sql).pl()
+        return con.sql(sql).pl()
     finally:
         con.close()
 

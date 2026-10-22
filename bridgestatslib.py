@@ -1004,7 +1004,8 @@ def chart_series(
             cross = (
                 df.group_by([parts[0], parts[1]])
                 .agg(pl.col(parts[2]).mean())
-                .pivot(values=parts[2], index=parts[0], columns=parts[1])
+                .sort([parts[0], parts[1]])
+                .pivot(on=parts[1], index=parts[0], values=parts[2])
             )
             index_col = cross.columns[0]
             payloads.append(

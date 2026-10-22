@@ -110,6 +110,21 @@ class ReportLibTests(unittest.TestCase):
         kinds = {chart["kind"] for chart in charts}
         self.assertTrue({"info", "bar"} & kinds)
 
+    def test_chart_series_three_column_heatmap(self) -> None:
+        # Hand-record pages ask for charts like "HCP_NS,DP_NS,DD_N_N".
+        df = pl.DataFrame(
+            {
+                "HCP_NS": [20, 25, 20, 25, 20],
+                "DP_NS": [3, 1, 1, 3, 3],
+                "DD_N_N": [6.0, 9.0, 7.0, 10.0, 8.0],
+            }
+        )
+        (chart,) = lib.chart_series(df, ["HCP_NS,DP_NS,DD_N_N"])
+        self.assertEqual(chart["kind"], "heatmap")
+        self.assertEqual(chart["index"], ["20", "25"])
+        self.assertEqual(chart["x_labels"], ["1", "3"])
+        self.assertEqual(chart["values"], [[7.0, 7.0], [9.0, 10.0]])
+
     def test_run_sql_rejects_unknown_source_and_forbidden(self) -> None:
         with self.assertRaises(ValueError):
             lib.run_sql("SELECT 1", "not_a_source")

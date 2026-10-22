@@ -1,7 +1,7 @@
 # do not list libraries built into python. e.g. json, pickle, time
 altair
 endplay
-duckdb
+duckdb>=1.5,<2
 fastapi
 httpx
 matplotlib

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import sys
 from datetime import datetime, timezone
+from importlib import metadata as importlib_metadata
 from pathlib import Path
 
 import streamlit as st
@@ -35,3 +37,32 @@ def show_app_datetime() -> None:
         unsafe_allow_html=True,
     )
     st.sidebar.caption(f"Build:{app_datetime()}")
+
+
+# (label shown in footer, pip distribution name)
+KEY_PACKAGES: tuple[tuple[str, str], ...] = (
+    ("streamlit", "streamlit"),
+    ("pandas", "pandas"),
+    ("polars", "polars"),
+    ("pyarrow", "pyarrow"),
+    ("duckdb", "duckdb"),
+    ("numpy", "numpy"),
+    ("endplay", "endplay"),
+    ("pytorch", "torch"),
+    ("scikit-learn", "scikit-learn"),
+)
+
+
+def package_versions_line() -> str:
+    """Python plus installed key package versions, e.g. 'Python:3.12.4 streamlit:1.40.0 ...'.
+
+    Reads package metadata, so torch etc. are never imported just for the footer.
+    Packages that are not installed are left out.
+    """
+    parts = [f"Python:{'.'.join(map(str, sys.version_info[:3]))}"]
+    for label, dist in KEY_PACKAGES:
+        try:
+            parts.append(f"{label}:{importlib_metadata.version(dist)}")
+        except importlib_metadata.PackageNotFoundError:
+            continue
+    return " ".join(parts)

@@ -6,6 +6,7 @@ import sys
 from datetime import datetime, timezone
 from importlib import metadata as importlib_metadata
 from pathlib import Path
+from typing import Any, Mapping, Optional
 
 import streamlit as st
 
@@ -13,6 +14,8 @@ _SOURCE = Path(__file__).resolve()
 _LOGO_URL = (
     "https://github.com/BSalita/BridgeStats-ACBL/blob/master/assets/logo_assistant.gif?raw=true"
 )
+SHOW_SQL_KEY = "show_sql_query"
+_SHOW_SQL_WIDGET_KEY = "show_sql_query_checkbox"
 _TITLE = "ACBL BridgeStats"
 
 
@@ -37,6 +40,37 @@ def show_app_datetime() -> None:
         unsafe_allow_html=True,
     )
     st.sidebar.caption(f"Build:{app_datetime()}")
+
+
+def render_sql_toggle() -> bool:
+    """Sidebar separator and "Show SQL query" checkbox, as in MortyBridgeChatbot.
+
+    Call on every page. Streamlit drops widget state when switching pages, so
+    the value is kept in st.session_state[SHOW_SQL_KEY] and seeds the widget.
+    """
+    st.sidebar.markdown("---")
+    st.session_state[SHOW_SQL_KEY] = st.sidebar.checkbox(
+        "Show SQL query",
+        value=bool(st.session_state.get(SHOW_SQL_KEY, False)),
+        key=_SHOW_SQL_WIDGET_KEY,
+    )
+    return st.session_state[SHOW_SQL_KEY]
+
+
+def show_sql(table: Optional[Mapping[str, Any]]) -> None:
+    """Show the SQL that produced an API table, when "Show SQL query" is checked.
+
+    Call just before displaying the table. Requires render_sql_toggle() earlier
+    in the run.
+    """
+    if not st.session_state[SHOW_SQL_KEY]:
+        return
+    sql = (table or {}).get("sql")
+    if not sql:
+        raise ValueError(
+            "Show SQL query: table has no 'sql' key. Is the BridgeStats API older than this app?"
+        )
+    st.code(sql, language="sql")
 
 
 # (label shown in footer, pip distribution name)

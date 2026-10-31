@@ -34,6 +34,7 @@ def Stats(club_or_tournament, pair_or_player, chart_options, groupby):
     st.set_page_config(layout="wide", initial_sidebar_state="expanded")
     streamlitlib.widen_scrollbars()
     app_info.show_app_datetime()
+    app_info.render_sql_toggle()
 
     st.header(
         f"{pair_or_player.capitalize()} Statistics for ACBL {club_or_tournament.capitalize()} Pair Games"
@@ -204,6 +205,7 @@ def Stats(club_or_tournament, pair_or_player, chart_options, groupby):
                 st.info(
                     "Frequency of player positions. PassedOut is boards sat with no contract (usually passed out)."
                 )
+                app_info.show_sql(report["position_frequency"])
                 streamlitlib.ShowDataFrameTable(
                     api.table_to_frame(report["position_frequency"]), round=2
                 )
@@ -213,6 +215,7 @@ def Stats(club_or_tournament, pair_or_player, chart_options, groupby):
                     f"Table of {report.get('selected_count', 0)} rows sorted by {sort_column}. "
                     f"Top performing {leaderboard.height} {pair_or_player}s shown."
                 )
+                app_info.show_sql(report["leaderboard"])
                 streamlitlib.ShowDataFrameTable(
                     leaderboard, color_column=sort_column, round=2
                 )
@@ -221,6 +224,7 @@ def Stats(club_or_tournament, pair_or_player, chart_options, groupby):
                     f"Boards played by {player_table.get('declarer_name')}. "
                     f"Sorted by {sort_column}. {player_table.get('row_count', 0)} boards found."
                 )
+                app_info.show_sql(player_table)
                 streamlitlib.ShowDataFrameTable(
                     api.table_to_frame(player_table),
                     color_column=sort_column,
@@ -230,6 +234,7 @@ def Stats(club_or_tournament, pair_or_player, chart_options, groupby):
                 st.info(
                     f"Means of boards played by {pair_or_player}s aggregated per session. Sorted by {sort_column}."
                 )
+                app_info.show_sql(report["session_means"])
                 streamlitlib.ShowDataFrameTable(
                     api.table_to_frame(report["session_means"]),
                     color_column=sort_column,
@@ -263,6 +268,7 @@ def Stats(club_or_tournament, pair_or_player, chart_options, groupby):
                             f"{n_boards} boards found in {n_sessions} sessions. "
                             f"Sorted by Date, session_id, HandRecordBoard, Declarer_Name."
                         )
+                        app_info.show_sql(comparison["identical_boards"])
                         streamlitlib.ShowDataFrameTable(
                             identical,
                             color_column=sort_column,
@@ -276,6 +282,7 @@ def Stats(club_or_tournament, pair_or_player, chart_options, groupby):
                                 f"Comparison of results of identical boards played by {pair_or_player}s aggregated per session. "
                                 f"{n_boards} boards found in {n_sessions} sessions. Sorted by {sort_column}."
                             )
+                            app_info.show_sql(comparison["session_means"])
                             streamlitlib.ShowDataFrameTable(
                                 session_cmp,
                                 color_column=sort_column,
@@ -287,6 +294,7 @@ def Stats(club_or_tournament, pair_or_player, chart_options, groupby):
                         st.info(
                             "Comparison of head-to-head results of identical boards played between pairs aggregated per boards. Sorted by Declarer_Name."
                         )
+                        app_info.show_sql(comparison["pair_head_to_head"])
                         streamlitlib.ShowDataFrameTable(
                             pair_cmp,
                             color_column=sort_column,

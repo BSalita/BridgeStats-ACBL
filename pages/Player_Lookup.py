@@ -28,6 +28,7 @@ import player_sidebar
 
 st.set_page_config(layout="wide", initial_sidebar_state="expanded")
 app_info.show_app_datetime()
+app_info.render_sql_toggle()
 st.header("Lookup Player Information")
 st.sidebar.header("Settings for Player Lookup")
 st.sidebar.header("Settings")

@@ -26,6 +26,7 @@ import bridgestats_api_client as api
 
 st.set_page_config(layout="wide", initial_sidebar_state="expanded")
 app_info.show_app_datetime()
+app_info.render_sql_toggle()
 st.header("Lookup Club Information")
 st.sidebar.header("Settings for Club Lookup")
 st.sidebar.header("Settings")

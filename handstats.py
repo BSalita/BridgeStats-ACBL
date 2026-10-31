@@ -32,6 +32,7 @@ def Stats(club_or_tournament, pair_or_player, chart_options, groupby):
     st.set_page_config(layout="wide", initial_sidebar_state="expanded")
     streamlitlib.widen_scrollbars()
     app_info.show_app_datetime()
+    app_info.render_sql_toggle()
 
     st.header(f"Hand Record Statistics for ACBL {club_or_tournament.capitalize()} Pair Games")
     st.sidebar.header("Settings for Hand Record Statistics")
@@ -118,6 +119,7 @@ def Stats(club_or_tournament, pair_or_player, chart_options, groupby):
                 f"Table of Hand Records. {report.get('selected_count', 0)} random rows selected. "
                 f"Table display limited to {table_df.height} random rows."
             )
+            app_info.show_sql(report["table"])
             streamlitlib.ShowDataFrameTable(table_df)
             st.info(f"Data table created in {round(time.time() - start_time, 2)} seconds.")
 

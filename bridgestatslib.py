@@ -873,13 +873,16 @@ def identical_boards_comparison(df: pl.DataFrame, sort_column: str) -> Dict[str,
     }
 
 
-def pair_head_to_head(df: pl.DataFrame, sort_column: str) -> pl.DataFrame:
+def pair_head_to_head_table(df: pl.DataFrame, sort_column: str) -> Dict[str, Any]:
+    """Pair_Head_To_Head favorite as an API table (keeps its "sql")."""
     if "HandRecordBoard" not in df.columns or "Declarer" not in df.columns:
-        return pl.DataFrame()
+        return frame_to_table(pl.DataFrame())
     meta = build_report_meta(sort_column=sort_column, top_n=MAX_TABLE_ROWS)
-    return table_to_frame(
-        run_favorite("Pair_Head_To_Head", meta, df=df, limit=MAX_TABLE_ROWS)
-    )
+    return run_favorite("Pair_Head_To_Head", meta, df=df, limit=MAX_TABLE_ROWS)
+
+
+def pair_head_to_head(df: pl.DataFrame, sort_column: str) -> pl.DataFrame:
+    return table_to_frame(pair_head_to_head_table(df, sort_column))
 
 
 def _json_value(value: Any) -> Any:
@@ -1393,6 +1396,7 @@ def board_results_report(
                         "declarer": declarer,
                         "declarer_name": name,
                         **frame_to_table(player_df, limit=MAX_TABLE_ROWS),
+                        "sql": boards["sql"],
                     }
                 )
         session_means = run_favorite(
@@ -1444,7 +1448,7 @@ def head_to_head(
     comparison = identical_boards_comparison(selected, sort_column)
     pair_table = None
     if pair_or_player == "pair" or pairs:
-        pair_table = frame_to_table(pair_head_to_head(selected, sort_column), limit=MAX_TABLE_ROWS)
+        pair_table = pair_head_to_head_table(selected, sort_column)
     return {
         "source": source,
         "selected_count": selected.height,

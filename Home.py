@@ -28,3 +28,4 @@ st.sidebar.markdown("🔗 [FFBridge Elo Ratings](https://ffbridge-elo.7nt.info)"
 st.sidebar.markdown("🔗 [FFBridge Postmortem](https://ffbridge.postmortem.chat)")
 st.sidebar.markdown("🔗 [FFBridge Statistics](https://ffbridge-stats.7nt.info)")
 st.sidebar.markdown("🔗 [PBN/LIN Postmortem](https://pbn.postmortem.chat)")
+app_info.render_sql_toggle()

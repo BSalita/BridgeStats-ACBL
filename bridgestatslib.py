@@ -72,6 +72,26 @@ BOARD_RESULT_COLUMNS = (
     "Vul",
     "ContractType",
     "PBN",
+    *(
+        LEAD_SCORE_COLUMNS := (
+            # Opening lead and its scores: club only (tournaments record no lead);
+            # SD_Lead_* only when step 2 ran with --sd-lead-samples.
+            "Lead",
+            "DD_Lead_Cost",
+            "Lead_Is_DD_Best",
+            "SD_Lead_Tricks",
+            "SD_Lead_Best_Tricks",
+            "SD_Lead_Cost",
+            "SD_Lead_Is_Best",
+            "SD_Lead_Best_Card",
+            "SD_Lead_Rank",
+            "SD_Lead_Set_Pct",
+            "SD_Lead_Best_Set_Pct",
+            "SD_Lead_Set_Cost",
+            "SD_Lead_Luck",
+            "SD_Lead_Samples",
+        )
+    ),
 )
 
 BOARD_RESULT_OPTIONAL_COLUMNS = (
@@ -81,6 +101,7 @@ BOARD_RESULT_OPTIONAL_COLUMNS = (
     "Player_Name_E",
     "Player_Name_S",
     "Player_Name_W",
+    *LEAD_SCORE_COLUMNS,
 )
 
 HAND_RECORD_COLUMNS = (

@@ -92,6 +92,14 @@ BOARD_RESULT_COLUMNS = (
             "SD_Lead_Samples",
         )
     ),
+    *(
+        SUITC_BOARD_COLUMNS := (
+            # SuitC (step 3a --suitc): declaring side's guess cost over the four
+            # suits, and DD_Tricks_Diff plus that cost.
+            "SC_Guess_Declarer",
+            "DD_Tricks_Diff_SC",
+        )
+    ),
 )
 
 BOARD_RESULT_OPTIONAL_COLUMNS = (
@@ -102,6 +110,7 @@ BOARD_RESULT_OPTIONAL_COLUMNS = (
     "Player_Name_S",
     "Player_Name_W",
     *LEAD_SCORE_COLUMNS,
+    *SUITC_BOARD_COLUMNS,
 )
 
 HAND_RECORD_COLUMNS = (

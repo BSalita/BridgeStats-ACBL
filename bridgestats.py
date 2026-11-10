@@ -31,7 +31,7 @@ import player_sidebar
 
 
 def Stats(club_or_tournament, pair_or_player, chart_options, groupby):
-    st.set_page_config(layout="wide", initial_sidebar_state="expanded")
+    st.set_page_config(page_icon=app_info.ASSISTANT_LOGO_URL, layout="wide", initial_sidebar_state="expanded")
     streamlitlib.widen_scrollbars()
     app_info.show_app_datetime()
     app_info.render_sql_toggle()

@@ -24,7 +24,7 @@ import streamlitlib  # must be placed after sys.path.append. vscode re-format li
 import app_info
 import bridgestats_api_client as api
 
-st.set_page_config(layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_icon=app_info.ASSISTANT_LOGO_URL, layout="wide", initial_sidebar_state="expanded")
 app_info.show_app_datetime()
 app_info.render_sql_toggle()
 st.header("Lookup Club Information")

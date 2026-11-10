@@ -11,7 +11,7 @@ from typing import Any, Mapping, Optional
 import streamlit as st
 
 _SOURCE = Path(__file__).resolve()
-_LOGO_URL = (
+ASSISTANT_LOGO_URL = (
     "https://github.com/BSalita/BridgeStats-ACBL/blob/master/assets/logo_assistant.gif?raw=true"
 )
 SHOW_SQL_KEY = "show_sql_query"
@@ -32,7 +32,7 @@ def show_app_datetime() -> None:
     st.sidebar.markdown(
         (
             '<div style="display:flex;align-items:center;gap:0.6rem;margin:0 0 0.75rem 0;">'
-            f'<img src="{_LOGO_URL}" alt="Morty" width="40" height="40" '
+            f'<img src="{ASSISTANT_LOGO_URL}" alt="Morty" width="40" height="40" '
             'style="width:2.5rem;height:2.5rem;border-radius:50%;flex:0 0 auto;">'
             f'<div style="font-size:1.05rem;font-weight:700;line-height:1.25;">{_TITLE}</div>'
             "</div>"

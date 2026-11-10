@@ -2,7 +2,7 @@ import streamlit as st
 
 import app_info
 
-st.set_page_config(layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_icon=app_info.ASSISTANT_LOGO_URL, layout="wide", initial_sidebar_state="expanded")
 app_info.show_app_datetime()
 
 st.header("Home Page of BridgeStats Project")
